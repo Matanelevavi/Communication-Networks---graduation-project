@@ -15,6 +15,7 @@ class AppServer:
     def __init__(self):
         self.logic = WeatherLogic()
         self.agent = FileAgent()
+        self.active_transfers = set()
 
         # Setup Standard TCP
         self.tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -99,38 +100,52 @@ class AppServer:
 
         except Exception as e:
             logging.error(f"Transfer thread error: {e}")
+        finally:
+            self.active_transfers.discard(addr)
 
     def run_udp(self):
         logging.info(f"RUDP listening on {APP_ADD}")
-        while True:
-            try:
-                self.udp_sock.settimeout(None)
-                data, addr = self.udp_sock.recvfrom(8192)
-                msg = data.decode(ENCODING)
+        try:
+            while True:
+                try:
+                    self.udp_sock.settimeout(None)
+                    data, addr = self.udp_sock.recvfrom(8192)
+                    msg = data.decode(ENCODING)
 
-                # Client gracefully disconnecting
-                if msg.startswith("FIN"):
-                    logging.info(f"Client {addr} started dissolution (FIN).")
-                    self.udp_sock.sendto(b"FIN-ACK", addr)
-                    continue
-
-                if msg.startswith("SEQ:1"):
-                    if SIMULATE_LOSS and random.random() < LOSS_RATE:
-                        logging.warning(f"Simulated packet drop from {addr}")
+                    # Client gracefully disconnecting
+                    if msg.startswith("FIN"):
+                        logging.info(f"Client {addr} started dissolution (FIN).")
+                        self.udp_sock.sendto(b"FIN-ACK", addr)
                         continue
 
-                    self.udp_sock.sendto(b"ACK:1", addr)
+                    if msg.startswith("SEQ:1"):
+                        if SIMULATE_LOSS and random.random() < LOSS_RATE:
+                            logging.warning(f"Simulated packet drop from {addr}")
+                            continue
 
-                    payload_str = msg.split("|")[1]
-                    payload = json.loads(payload_str)
+                        self.udp_sock.sendto(b"ACK:1", addr)
 
-                    threading.Thread(target=self.handle_udp_request, args=(payload, addr), daemon=True).start()
+                        if addr in self.active_transfers:
+                            continue
 
-            except ConnectionResetError:
-                # Ignore Windows ICMP Port Unreachable errors
-                pass
-            except Exception as e:
-                logging.error(f"UDP loop error: {e}")
+                        self.active_transfers.add(addr)
+
+                        payload_str = msg.split("|")[1]
+                        payload = json.loads(payload_str)
+
+                        threading.Thread(target=self.handle_udp_request, args=(payload, addr), daemon=True).start()
+
+                except ConnectionResetError:
+                    # Ignore Windows ICMP Port Unreachable errors
+                    pass
+                except Exception as e:
+                    logging.error(f"UDP loop error: {e}")
+        except KeyboardInterrupt:
+            logging.info("Shutting down App Server gracefully...")
+        finally:
+            self.tcp_sock.close()
+            self.udp_sock.close()
+
 
     def start(self):
         logging.info("Starting Multi-Threaded App Server (WeatherWear)")

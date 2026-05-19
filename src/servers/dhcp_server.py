@@ -38,6 +38,13 @@ class DHCPServer:
                         logging.info(f"ACK sent for {wanted_ip}, IPs remaining: {len(self.pool_ip)}")
                     else:
                         logging.warning(f"Invalid IP request from {client_add}: {wanted_ip}")
+
+                elif msg.startswith("DHCP_RELEASE"):
+                    released_ip = msg.split(":")[1]
+                    if client_add in self.used_ips and self.used_ips[client_add] == released_ip:
+                        del self.used_ips[client_add]
+                        self.pool_ip.append(released_ip)
+                        logging.info(f"Released IP {released_ip} from {client_add}. IPs remaining: {len(self.pool_ip)}")
         except KeyboardInterrupt:
             logging.info("Turn off DHCP Server.")
         finally:
