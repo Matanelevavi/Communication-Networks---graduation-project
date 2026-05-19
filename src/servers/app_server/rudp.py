@@ -3,6 +3,7 @@ import socket
 import logging
 import zlib
 import time
+from src.config import MAX_RETRIES, SIMULATE_LOSS, LOSS_RATE
 
 
 class RUDP:
@@ -30,15 +31,12 @@ class RUDP:
 
         unacked = set(chunks.keys())
         window_start = 1
-        max_retries = 3
         retry_count = 0
-
         dup_ack_count = 0
-        last_ack = -1
 
         logging.info(f"Transferring {total_chunks} chunks to {addr}")
 
-        while unacked and retry_count < max_retries:
+        while unacked and retry_count < MAX_RETRIES:
             window_end = min(window_start + int(self.cwnd), total_chunks + 1)
 
             for seq in range(window_start, window_end):
@@ -47,7 +45,7 @@ class RUDP:
                     header = f"SEQ:{seq}|TOTAL:{total_chunks}|CHK:{chk}|".encode('utf-8')
 
                     try:
-                        if random.random()<0.2:
+                        if SIMULATE_LOSS and random.random() < LOSS_RATE:
                             logging.info(f"Packet loss simulation {seq}")
                             continue
                         if seq==2 and retry_count==0:
@@ -68,8 +66,10 @@ class RUDP:
                     if ack_seq in unacked:
                         unacked.remove(ack_seq)
                         retry_count = 0
-                        dup_ack_count = 0
-                        last_ack = ack_seq
+                        if ack_seq > window_start:
+                            dup_ack_count += 1
+                        else:
+                            dup_ack_count = 0
 
                         # Additive increase
                         self.cwnd = min(self.cwnd + 1.0, self.max_cwnd)
@@ -77,16 +77,12 @@ class RUDP:
                         # Slide the window forward
                         while window_start not in unacked and window_start <= total_chunks:
                             window_start += 1
+                            dup_ack_count = 0
 
-                    elif ack_seq == last_ack:
-                        dup_ack_count += 1
-
-                        # Fast retransmit on 3 dup ACKs
                         if dup_ack_count == 3:
-                            logging.warning(f"Fast Retransmit triggered for packet {window_start}")
+                            logging.warning(f"Fast Retransmit triggered for missing packet {window_start}")
+                            self.cwnd = max(self.cwnd / 2.0, 1.0)# Multiplicative decrease
 
-                            # Multiplicative decrease
-                            self.cwnd = max(self.cwnd / 2.0, 1.0)
 
                             if window_start in unacked:
                                 chk = zlib.crc32(chunks[window_start]) & 0xffffffff

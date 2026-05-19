@@ -1,6 +1,7 @@
 import socket
 import sys
 import logging
+import time
 from src.config import *
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s -BACKUP DHCP- %(message)s', datefmt='%H:%M:%S', stream=sys.stdout)
@@ -20,6 +21,7 @@ class DHCPBackupServer:
                 msg=data.decode(ENCODING)
 
                 if msg==DISCOVER_MSG:
+                    time.sleep(2) #Lets the main server answer first
                     if not self.pool_ip:
                         logging.warning(f"Backup IP pool finished, Rejecting {client_add}")
                         self.sock.sendto("DHCP: No IPs".encode(ENCODING),client_add)
@@ -40,6 +42,12 @@ class DHCPBackupServer:
                     else:
                         #Client accepted the primary server offer so silently ignore
                         pass
+                elif msg.startswith("DHCP_RELEASE"):
+                    released_ip = msg.split(":")[1]
+                    if client_add in self.used_ips and self.used_ips[client_add] == released_ip:
+                        del self.used_ips[client_add]
+                        self.pool_ip.append(released_ip)
+                        logging.info(f"Released IP {released_ip} from {client_add}. IPs remaining: {len(self.pool_ip)}")
         except KeyboardInterrupt:
             logging.info("Turn off Backup DHCP Server")
         except Exception as e:

@@ -1,6 +1,7 @@
 import os
 import logging
 import sys
+import threading
 from src.config import DATA_DIR
 from datetime import date
 
@@ -9,6 +10,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s -AGENT- %(message)s'
 class FileAgent:
     def __init__(self):
         self.data_folder = DATA_DIR
+        self.lock = threading.Lock()
 
         if not os.path.exists(self.data_folder):
             os.makedirs(self.data_folder)
@@ -37,9 +39,10 @@ class FileAgent:
     def save_text_file(self, filename, content):
         file_path = os.path.join(self.data_folder, filename)
         try:
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write("DAILY RECOMMENDATION\n\n")
-                f.write(content)
+            with self.lock:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write("DAILY RECOMMENDATION\n\n")
+                    f.write(content)
             logging.info(f"Agent actively saved text to {file_path}")
         except Exception as e:
             logging.error(f"Save text error: {e}")
@@ -47,8 +50,9 @@ class FileAgent:
     def save_binary_file(self, filename, binary_data):
         file_path = os.path.join(self.data_folder, filename)
         try:
-            with open(file_path, 'wb') as f:
-                f.write(binary_data)
+            with self.lock:
+                with open(file_path, 'wb') as f:
+                    f.write(binary_data)
             logging.info(f"Agent actively saved binary file to {file_path}")
         except Exception as e:
             logging.error(f"Save binary error: {e}")
@@ -73,6 +77,7 @@ class FileAgent:
             return f"FTP Error: {e}"
 
     def get_ftp_file_content(self, filename):
+        filename = os.path.basename(filename)
         file_path = os.path.join(self.data_folder, filename)
         try:
             if not os.path.exists(file_path):

@@ -17,7 +17,7 @@ class NetworkClient:
         self.my_ip = None
         self.app_server_ip = None
         self.dns_cache = {}
-        self.DNS_TTL = 60
+        self.DNS_TTL = DNS_CACHE_TTL
 
     def get_ip_via_dhcp(self):
         logging.info("Starting DHCP DORA")
@@ -67,7 +67,7 @@ class NetworkClient:
                 return cached_ip
             else:
                 logging.info(f"DNS cache for {target_domain} expired. Fetching fresh IP.")
-                return self.dns_cache[target_domain]
+                del self.dns_cache[target_domain]
 
         logging.info(f"Resolving {target_domain} via network")
         try:
@@ -93,9 +93,9 @@ class NetworkClient:
         try:
             tcp_sock.connect((self.app_server_ip, APP_PORT))
             tcp_sock.sendall(payload_str.encode(ENCODING))
-            tcp_sock.settimeout(20.0)
+            tcp_sock.settimeout(TCP_TIMEOUT)
 
-            response = tcp_sock.recv(8192)
+            response = tcp_sock.recv(BUFF_SIZE*8)
             try:
                 return response.decode(ENCODING)
             except UnicodeDecodeError:
@@ -133,14 +133,14 @@ class NetworkClient:
             return None
 
         logging.info("[RUDP] Waiting for chunks")
-        udp_sock.settimeout(20.0)
+        udp_sock.settimeout(TCP_TIMEOUT)
         chunks = {}
         total = None
 
         #receive sliding window chunks
         while True:
             try:
-                data, server_info = udp_sock.recvfrom(8500)
+                data, server_info = udp_sock.recvfrom(BUFF_SIZE*8+500)
                 parts = data.split(b'|', 3)
                 if len(parts) == 4:
                     seq = int(parts[0].split(b':')[1])
@@ -190,6 +190,12 @@ class NetworkClient:
                         logging.info("[TEARDOWN] Received FIN-ACK, Connection closed elegantly")
                 except socket.timeout:
                     logging.warning("[TEARDOWN] Timeout waiting for FIN-ACK, Forcing close")
+            if self.my_ip:
+                logging.info(f"[TEARDOWN] Releasing IP {self.my_ip}")
+                release_msg = f"DHCP_RELEASE:{self.my_ip}"
+                self.client_socket.sendto(release_msg.encode(ENCODING), DHCP_ADD)
+                self.client_socket.sendto(release_msg.encode(ENCODING), DHCP_BACKUP_ADD)
+
             self.client_socket.close()
         except Exception:
             pass

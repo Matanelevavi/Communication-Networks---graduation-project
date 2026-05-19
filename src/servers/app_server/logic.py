@@ -38,9 +38,10 @@ class WeatherLogic:
             rain_probs = data["hourly"]["precipitation_probability"][:24]
             times = data["hourly"]["time"][:24]
 
+            RAIN_THRESHOLD = 10
             rain_alerts = []
             for i in range(len(rain_probs)):
-                if rain_probs[i] > 10:
+                if rain_probs[i] > RAIN_THRESHOLD:
                     hour = times[i].split("T")[1]
                     rain_alerts.append(f"{hour} ({rain_probs[i]}%)")
 
@@ -79,7 +80,7 @@ class WeatherLogic:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={self.api_key}"
             payload = {"contents": [{"parts": [{"text": prompt}]}]}
-            res = requests.post(url, json=payload, timeout=15).json()
+            res = requests.post(url, json=payload, timeout=HTTP_TIMEOUT).json()
 
             if 'candidates' in res:
                 return res['candidates'][0]['content']['parts'][0]['text']
@@ -95,7 +96,7 @@ class WeatherLogic:
 
         try:
             logging.info(f"Downloading CSV weather report for {city}...")
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, timeout=HTTP_TIMEOUT)
 
             if response.status_code == 200:
                 logging.info("CSV file downloaded successfully.")

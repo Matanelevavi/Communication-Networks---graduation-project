@@ -1,4 +1,6 @@
 import os
+import socket
+
 
 #network
 HOST= '127.0.0.1'#localhost
@@ -20,10 +22,11 @@ ACK_MSG = "DHCP_ACK"
 POOL_IP = [f"192.168.1.{i}" for i in range(100, 151)]
 
 #dns
+DNS_CACHE_TTL = 60
 DNS_SERVER_PORT = 8053
 DNS_ADD = (HOST,DNS_SERVER_PORT)
 MY_DOMAIN = "weatherwear.local"
-APP_SER_IP = "127.0.0.1"
+APP_SER_IP = socket.gethostbyname(socket.gethostname())
 
 #backup dhcp
 DHCP_BACKUP_PORT = 8069
@@ -34,6 +37,7 @@ BACKUP_IPS = [f"192.168.2.{i}" for i in range(100, 151)]
 APP_PORT = 8080
 APP_ADD = (HOST, APP_PORT)
 HTTP_TIMEOUT = 10
+TCP_TIMEOUT = 20.0
 
 #api config
 API_KEY = "AIzaSyB-zhhBeIjMCDMbmVcmEOLm3YJhKcogtTE"
