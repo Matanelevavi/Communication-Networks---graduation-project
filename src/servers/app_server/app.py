@@ -12,6 +12,7 @@ from src.servers.app_server.rudp import RUDP
 logging.basicConfig(level=logging.INFO, format='%(asctime)s -SERVER- %(message)s', datefmt='%H:%M:%S', stream=sys.stdout)
 
 class AppServer:
+    #setup the logic, agent, and two sockets (TCP and UDP).
     def __init__(self):
         self.logic = WeatherLogic()
         self.agent = FileAgent()
@@ -27,6 +28,7 @@ class AppServer:
         self.udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp_sock.bind(APP_ADD)
 
+    #route the client's request to the right logic: get weather, list files, or download a file
     def process_request(self, payload):
         action = payload.get("action", "FORECAST")
 
@@ -60,6 +62,7 @@ class AppServer:
 
         return "Error: Unknown action requested."
 
+    #handle a standard TCP connection, read the JSON request, send the response and close
     def handle_tcp_client(self, client_sock, addr):
         try:
             data = client_sock.recv(4096).decode(ENCODING)
@@ -77,6 +80,7 @@ class AppServer:
         finally:
             client_sock.close()
 
+    #keep listening for new TCP clients and create a new thread for each one
     def run_tcp(self):
         logging.info(f"TCP listening on {APP_ADD}")
         while True:
@@ -87,6 +91,7 @@ class AppServer:
             except Exception as e:
                 logging.error(f"TCP loop error: {e}")
 
+    #create a new temporary socket just to send the RUDP response back to the client
     def handle_udp_request(self, payload, addr):
         try:
             response = self.process_request(payload)
@@ -103,6 +108,7 @@ class AppServer:
         finally:
             self.active_transfers.discard(addr)
 
+    #listen for UDP messages, Manage connections (FIN) and start threads for new valid requests
     def run_udp(self):
         logging.info(f"RUDP listening on {APP_ADD}")
         try:
@@ -136,7 +142,7 @@ class AppServer:
                         threading.Thread(target=self.handle_udp_request, args=(payload, addr), daemon=True).start()
 
                 except ConnectionResetError:
-                    # Ignore Windows ICMP Port Unreachable errors
+                    #ignore Windows ICMP Port Unreachable errors
                     pass
                 except Exception as e:
                     logging.error(f"UDP loop error: {e}")
@@ -146,7 +152,7 @@ class AppServer:
             self.tcp_sock.close()
             self.udp_sock.close()
 
-
+    #start the server by running TCP in the background and keeping UDP on the main thread
     def start(self):
         logging.info("Starting Multi-Threaded App Server (WeatherWear)")
         threading.Thread(target=self.run_tcp, daemon=True).start()

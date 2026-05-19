@@ -10,6 +10,7 @@ from src.client.gui import get_user_data_gui, show_result_gui, show_ftp_list_gui
 logging.basicConfig(level=logging.INFO, format='%(asctime)s -CLIENT- %(message)s', datefmt='%H:%M:%S', stream=sys.stdout)
 
 class NetworkClient:
+    #setup the main client socket and prepare variables for IP and DNS cache
     def __init__(self):
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.client_socket.bind((HOST,0))
@@ -19,6 +20,7 @@ class NetworkClient:
         self.dns_cache = {}
         self.DNS_TTL = DNS_CACHE_TTL
 
+    #ask the DHCP server for an IP address using the DORA
     def get_ip_via_dhcp(self):
         logging.info("Starting DHCP DORA")
         try:
@@ -58,6 +60,7 @@ class NetworkClient:
             logging.error("DHCP Timeout")
             return False
 
+    #check the local cache for the server's IP. If it's old or missing ask the DNS server
     def resolve_dns(self, target_domain):
         # check cache first with TTL
         if target_domain in self.dns_cache:
@@ -87,6 +90,7 @@ class NetworkClient:
             logging.error("DNS timeout.")
             return None
 
+    #connect to the server using standard TCP send the JSON request and wait for the response
     def tcp_send_and_receive(self, payload_str):
         logging.info("[TCP] Connecting")
         tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -107,6 +111,7 @@ class NetworkClient:
         finally:
             tcp_sock.close()
 
+    #send data using our RUDP, check checksums handle chunks and send ACKs.
     def reliable_send_and_receive(self, payload_str):
         addr = (self.app_server_ip, APP_PORT)
         udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -164,9 +169,8 @@ class NetworkClient:
                         for _ in range(3):
                             udp_sock.sendto(f"ACK:{seq}".encode('utf-8'), server_info)
                             time.sleep(0.1)
-
                         udp_sock.close()
-                        full_data = b"".join(chunks[i] for i in range(1, total + 1))
+                        full_data = b"".join(chunks[i] for i in range(1,total+1))
 
                         try:
                             return full_data.decode('utf-8')
@@ -178,6 +182,7 @@ class NetworkClient:
                 udp_sock.close()
                 return None
 
+    #gracefully close the connection with the App Server (FIN) and release the IP to the DHCP Server
     def close(self):
         try:
             if self.app_server_ip:

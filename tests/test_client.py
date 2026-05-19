@@ -4,17 +4,15 @@ import socket
 import time
 
 from src.client.client import NetworkClient
-from src.config import ENCODING, DISCOVER_MSG, OFFER_MSG, REQUEST_MSG, ACK_MSG, APP_PORT
+from src.config import ENCODING, DISCOVER_MSG, OFFER_MSG, REQUEST_MSG, ACK_MSG, APP_PORT, DHCP_ADD, DHCP_BACKUP_ADD
 
 
 class TestNetworkClient(unittest.TestCase):
 
-    # test 1: dhcp works perfectly (dora process)
     @patch('socket.socket')
     def test_dhcp_success(self, mock_socket_class):
         mock_sock = mock_socket_class.return_value
 
-        # mock the server answering: first an OFFER, then an ACK
         mock_sock.recvfrom.side_effect = [
             (f"{OFFER_MSG}:192.168.1.50".encode(ENCODING), ("127.0.0.1", 8067)),
             (f"{ACK_MSG}:192.168.1.50".encode(ENCODING), ("127.0.0.1", 8067))
@@ -26,7 +24,6 @@ class TestNetworkClient(unittest.TestCase):
         self.assertTrue(result)
         self.assertEqual(client.my_ip, "192.168.1.50")
 
-    # test 2: dhcp fails due to timeout
     @patch('socket.socket')
     def test_dhcp_timeout(self, mock_socket_class):
         mock_sock = mock_socket_class.return_value
@@ -38,7 +35,6 @@ class TestNetworkClient(unittest.TestCase):
         self.assertFalse(result)
         self.assertIsNone(client.my_ip)
 
-    # test 3: dns resolve asks the server
     @patch('socket.socket')
     def test_resolve_dns_network(self, mock_socket_class):
         mock_sock = mock_socket_class.return_value
@@ -51,22 +47,30 @@ class TestNetworkClient(unittest.TestCase):
         self.assertEqual(client.app_server_ip, "10.0.0.5")
         self.assertIn("weatherwear.local", client.dns_cache)
 
-    # test 4: dns resolve uses cache and skips network
     @patch('socket.socket')
-    def test_resolve_dns_cache(self, mock_socket_class):
+    def test_resolve_dns_cache_valid(self, mock_socket_class):
         client = NetworkClient()
-
-        # inject a fake valid cache entry
         client.dns_cache["weatherwear.local"] = ("192.168.1.99", time.time())
 
         ip = client.resolve_dns("weatherwear.local")
 
         self.assertEqual(ip, "192.168.1.99")
-        # make sure we didn't send anything over the network
-        mock_sock = mock_socket_class.return_value
-        mock_sock.sendto.assert_not_called()
+        mock_socket_class.return_value.sendto.assert_not_called()
 
-    # test 5: simple tcp request
+    @patch('socket.socket')
+    def test_resolve_dns_cache_expired(self, mock_socket_class):
+        client = NetworkClient()
+        mock_sock = mock_socket_class.return_value
+        mock_sock.recvfrom.return_value = ("RESOLVED:10.0.0.5".encode(ENCODING), ("127.0.0.1", 8053))
+
+        # simulate expired TTL
+        client.dns_cache["weatherwear.local"] = ("192.168.1.99", time.time() - 100)
+
+        ip = client.resolve_dns("weatherwear.local")
+
+        self.assertEqual(ip, "10.0.0.5")
+        mock_sock.sendto.assert_called_once()
+
     @patch('socket.socket')
     def test_tcp_send_and_receive(self, mock_socket_class):
         mock_tcp_sock = MagicMock()
@@ -83,7 +87,6 @@ class TestNetworkClient(unittest.TestCase):
         mock_tcp_sock.sendall.assert_called_once()
         mock_tcp_sock.close.assert_called_once()
 
-    # test 6: graceful teardown with fin and fin-ack
     @patch('socket.socket')
     def test_close_teardown(self, mock_socket_class):
         mock_sock = mock_socket_class.return_value
@@ -91,11 +94,17 @@ class TestNetworkClient(unittest.TestCase):
 
         client = NetworkClient()
         client.app_server_ip = "127.0.0.1"
+        client.my_ip = "192.168.1.50"
         client.client_socket = mock_sock
 
         client.close()
 
         mock_sock.sendto.assert_any_call(b"FIN", ("127.0.0.1", APP_PORT))
+
+        release_msg = b"DHCP_RELEASE:192.168.1.50"
+        mock_sock.sendto.assert_any_call(release_msg, DHCP_ADD)
+        mock_sock.sendto.assert_any_call(release_msg, DHCP_BACKUP_ADD)
+
         mock_sock.close.assert_called_once()
 
 
