@@ -8,6 +8,7 @@ from datetime import date
 logging.basicConfig(level=logging.INFO, format='%(asctime)s -AGENT- %(message)s', stream=sys.stdout)
 
 class FileAgent:
+    #setup the data folder to store files and create a lock to prevent file conflicts
     def __init__(self):
         self.data_folder = DATA_DIR
         self.lock = threading.Lock()
@@ -17,6 +18,7 @@ class FileAgent:
 
         logging.info("Agent initialized and data folder is ready.")
 
+    #check if we already have today's forecast for the city to keep time and API calls
     def get_cached_forecast(self, city_name):
         filename = f"{city_name}_forecast.txt"
         file_path = os.path.join(self.data_folder, filename)
@@ -36,6 +38,7 @@ class FileAgent:
                     return None
         return None
 
+    #save a text string into a file safely using the lock
     def save_text_file(self, filename, content):
         file_path = os.path.join(self.data_folder, filename)
         try:
@@ -47,6 +50,7 @@ class FileAgent:
         except Exception as e:
             logging.error(f"Save text error: {e}")
 
+    #save binary data into a file safely using the lock
     def save_binary_file(self, filename, binary_data):
         file_path = os.path.join(self.data_folder, filename)
         try:
@@ -57,6 +61,7 @@ class FileAgent:
         except Exception as e:
             logging.error(f"Save binary error: {e}")
 
+    #look inside the data folder and return a formatted list of all saved files
     def get_ftp_file_list(self):
         try:
             files = os.listdir(self.data_folder)
@@ -76,6 +81,7 @@ class FileAgent:
         except Exception as e:
             return f"FTP Error: {e}"
 
+    #read a file from the folder, prevent hackers from reading files outside the folder.
     def get_ftp_file_content(self, filename):
         filename = os.path.basename(filename)
         file_path = os.path.join(self.data_folder, filename)

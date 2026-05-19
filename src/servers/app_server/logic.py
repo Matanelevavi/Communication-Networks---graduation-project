@@ -8,12 +8,14 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s -LOGIC- %(message)s'
 
 class WeatherLogic:
     def __init__(self):
+        #setup the API key
         self.api_key = API_KEY
 
     def is_english_only(self, text):
-        # Fails if it finds Hebrew letters. Allows English, numbers, and symbols.
+        #fails if it finds Hebrew letters. Allows English, numbers, and symbols.
         return not bool(re.search(r'[\u0590-\u05FF]', str(text)))
 
+    #get the city coordinates and fetch the weather forecast for the next 24 hours
     def fetch_weather(self, city_name):
         if not self.is_english_only(city_name):
             return {"error": "Input Error: Please use English names only for the city."}
@@ -29,7 +31,7 @@ class WeatherLogic:
             res = geo_res["results"][0]
             lat, lon = res["latitude"], res["longitude"]
 
-            # Get 24h weather data
+            #get 24h weather data
             weather_url = (f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
                            f"&current_weather=true&hourly=temperature_2m,precipitation_probability&timezone=auto")
             data = requests.get(weather_url, timeout=HTTP_TIMEOUT).json()
@@ -61,6 +63,7 @@ class WeatherLogic:
             logging.error(f"Weather logic error: {e}")
             return {"error": "Connection Error: Failed to reach weather service."}
 
+    #ask the Gemini for clothing advice based on the weather and family details
     def get_ai_recommendation(self, weather_data, profiles):
         if not weather_data or weather_data.get("error"):
             return weather_data.get("error", "Unknown error.")
@@ -71,8 +74,8 @@ class WeatherLogic:
         prompt = (f"Today in {weather_data['city_full_name']}: {weather_data['min_temp']}C to {weather_data['max_temp']}C. "
                   f"Rain: {weather_data['rain_str']}. "
                   f"Family info: {profiles}. "
-                  f"Task: Write a short, friendly paragraph in English with clothing advice. "
-                  f"Be concise and focus on the weather. No lists.")
+                  f"Task: Write a short and friendly paragraph in English with clothing advice "
+                  f"focus on the weather, No lists.")
 
         if MOCK_LLM:
             return "Mock: It's a nice day! Wear light clothes."
@@ -91,6 +94,7 @@ class WeatherLogic:
             logging.error(f"AI Connection error: {e}")
             return "Recommendation Error: Could not connect to AI advisor."
 
+    #download the full weather data as a raw CSV file
     def download_weather_csv_report(self, city, lat, lon):
         url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,precipitation_probability&format=csv"
 

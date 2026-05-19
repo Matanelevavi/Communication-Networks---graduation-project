@@ -6,12 +6,14 @@ from src.config import *
 logging.basicConfig(level=logging.INFO, format='%(asctime)s -DHCP- %(message)s', datefmt='%H:%M:%S', stream=sys.stdout)
 
 class DHCPServer:
+    #set up the UDP socket and create lists to track available and used IP addresses
     def __init__(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind(DHCP_ADD)
         self.pool_ip= list(POOL_IP)
         self.used_ips = {}
 
+    #listen for clients, Give new IP confirm requests, and take back IPs when clients leave.
     def start(self):
         logging.info(f"DHCP Server listening on {DHCP_ADD}")
         try:
@@ -41,7 +43,7 @@ class DHCPServer:
 
                 elif msg.startswith("DHCP_RELEASE"):
                     released_ip = msg.split(":")[1]
-                    if client_add in self.used_ips and self.used_ips[client_add] == released_ip:
+                    if client_add in self.used_ips and self.used_ips[client_add]== released_ip:
                         del self.used_ips[client_add]
                         self.pool_ip.append(released_ip)
                         logging.info(f"Released IP {released_ip} from {client_add}. IPs remaining: {len(self.pool_ip)}")

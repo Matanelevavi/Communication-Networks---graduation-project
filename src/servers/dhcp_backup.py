@@ -7,12 +7,14 @@ from src.config import *
 logging.basicConfig(level=logging.INFO, format='%(asctime)s -BACKUP DHCP- %(message)s', datefmt='%H:%M:%S', stream=sys.stdout)
 
 class DHCPBackupServer:
+    #set up the backup UDP socket and prepare a list of backup IP addresses.
     def __init__(self):
         self.sock=socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind(DHCP_BACKUP_ADD)
         self.pool_ip=list(BACKUP_IPS)
         self.used_ips={}
 
+    # Listen for clients. Wait 2 seconds to let the main server answer first then offer a backup IP if needed.
     def start(self):
         logging.info(f"Backup DHCP Server listening on {DHCP_BACKUP_ADD}")
         try:
@@ -42,6 +44,7 @@ class DHCPBackupServer:
                     else:
                         #Client accepted the primary server offer so silently ignore
                         pass
+
                 elif msg.startswith("DHCP_RELEASE"):
                     released_ip = msg.split(":")[1]
                     if client_add in self.used_ips and self.used_ips[client_add] == released_ip:
