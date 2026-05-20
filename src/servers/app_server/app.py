@@ -29,16 +29,16 @@ class AppServer:
         self.udp_sock.bind(APP_ADD)
 
     #route the client's request to the right logic: get weather, list files, or download a file
-    def process_request(self, payload):
-        action = payload.get("action", "FORECAST")
+    def pros_request(self, payld):
+        action = payld.get("action", "FORECAST")
 
         if action == "FORECAST":
-            city = payload.get("city")
+            city = payld.get("city")
             safe_city = city.replace(" ", "_")
             cached_result = self.agent.get_cached_forecast(safe_city)
             if cached_result:
                 return cached_result
-            profiles = payload.get("profiles")
+            profiles = payld.get("profiles")
 
             weather_data = self.logic.fetch_weather(city)
             if weather_data and weather_data.get("error"):
@@ -50,14 +50,13 @@ class AppServer:
             csv_bytes = self.logic.download_weather_csv_report(city, weather_data["lat"], weather_data["lon"])
             if csv_bytes:
                 self.agent.save_binary_file(f"{safe_city}_full_report.csv", csv_bytes)
-
             return advice
 
         elif action == "FTP_LIST":
             return self.agent.get_ftp_file_list()
 
         elif action == "FTP_GET":
-            filename = payload.get("filename", "")
+            filename= payld.get("filename", "")
             return self.agent.get_ftp_file_content(filename)
 
         return "Error: Unknown action requested."
@@ -68,7 +67,7 @@ class AppServer:
             data = client_sock.recv(4096).decode(ENCODING)
             if data:
                 payload = json.loads(data)
-                response = self.process_request(payload)
+                response = self.pros_request(payload)
 
                 if isinstance(response, str):
                     client_sock.sendall(response.encode(ENCODING))
@@ -94,13 +93,12 @@ class AppServer:
     #create a new temporary socket just to send the RUDP response back to the client
     def handle_udp_request(self, payload, addr):
         try:
-            response = self.process_request(payload)
+            respo = self.pros_request(payload)
 
             # Use an ephemeral socket for the transfer to avoid ACK collisions on the main port
             transfer_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             transfer_rudp = RUDP(transfer_sock)
-
-            transfer_rudp.reliable_send(response, addr)
+            transfer_rudp.reliable_send(respo, addr)
             transfer_sock.close()
 
         except Exception as e:
@@ -115,17 +113,17 @@ class AppServer:
             while True:
                 try:
                     self.udp_sock.settimeout(None)
-                    data, addr = self.udp_sock.recvfrom(8192)
-                    msg = data.decode(ENCODING)
+                    data,addr = self.udp_sock.recvfrom(8192)
+                    msg =data.decode(ENCODING)
 
                     # Client gracefully disconnecting
                     if msg.startswith("FIN"):
                         logging.info(f"Client {addr} started dissolution (FIN).")
-                        self.udp_sock.sendto(b"FIN-ACK", addr)
+                        self.udp_sock.sendto(b"FIN-ACK",addr)
                         continue
 
                     if msg.startswith("SEQ:1"):
-                        if SIMULATE_LOSS and random.random() < LOSS_RATE:
+                        if SIMULATE_LOSS and random.random()< LOSS_RATE:
                             logging.warning(f"Simulated packet drop from {addr}")
                             continue
 
@@ -136,10 +134,10 @@ class AppServer:
 
                         self.active_transfers.add(addr)
 
-                        payload_str = msg.split("|")[1]
-                        payload = json.loads(payload_str)
+                        payld_str = msg.split("|")[1]
+                        payld = json.loads(payld_str)
 
-                        threading.Thread(target=self.handle_udp_request, args=(payload, addr), daemon=True).start()
+                        threading.Thread(target=self.handle_udp_request, args=(payld, addr), daemon=True).start()
 
                 except ConnectionResetError:
                     #ignore Windows ICMP Port Unreachable errors

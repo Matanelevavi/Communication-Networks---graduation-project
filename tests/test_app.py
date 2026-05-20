@@ -20,7 +20,7 @@ class TestAppServer(unittest.TestCase):
         self.server.agent.get_ftp_file_list.return_value = "MOCK_FTP_LIST"
         payload = {"action": "FTP_LIST"}
 
-        response = self.server.process_request(payload)
+        response = self.server.pros_request(payload)
 
         self.assertEqual(response, "MOCK_FTP_LIST")
         self.server.agent.get_ftp_file_list.assert_called_once()
@@ -28,7 +28,7 @@ class TestAppServer(unittest.TestCase):
     def test_process_request_unknown_action(self):
         payload = {"action": "HACK_SERVER"}
 
-        response = self.server.process_request(payload)
+        response = self.server.pros_request(payload)
 
         self.assertEqual(response, "Error: Unknown action requested.")
         self.server.logic.fetch_weather.assert_not_called()
@@ -39,12 +39,12 @@ class TestAppServer(unittest.TestCase):
         test_payload = {"action": "FORECAST", "city": "Ariel"}
         mock_client_sock.recv.return_value = json.dumps(test_payload).encode('utf-8')
 
-        self.server.process_request = MagicMock(return_value="Wear a jacket!")
+        self.server.pros_request = MagicMock(return_value="Wear a jacket!")
 
         self.server.handle_tcp_client(mock_client_sock, ("127.0.0.1", 55555))
 
         mock_client_sock.recv.assert_called_once()
-        self.server.process_request.assert_called_once_with(test_payload)
+        self.server.pros_request.assert_called_once_with(test_payload)
         mock_client_sock.sendall.assert_called_once_with(b"Wear a jacket!")
         mock_client_sock.close.assert_called_once()
 
@@ -52,7 +52,7 @@ class TestAppServer(unittest.TestCase):
         self.server.agent.get_cached_forecast.return_value = "Cached weather advice"
         payload = {"action": "FORECAST", "city": "Ariel", "profiles": []}
 
-        response = self.server.process_request(payload)
+        response = self.server.pros_request(payload)
 
         self.assertEqual(response, "Cached weather advice")
         self.server.logic.fetch_weather.assert_not_called()#makes sure that when there is a response in the cache, the server does not contact the API

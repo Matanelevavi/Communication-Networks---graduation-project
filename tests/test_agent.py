@@ -46,7 +46,7 @@ class TestFileAgent(unittest.TestCase):
 
     def test_get_ftp_file_content_path_traversal_protection(self):
         safe_filename = "secret.txt"
-        with open(os.path.join(self.test_dir, safe_filename), 'w') as f:
+        with open(os.path.join(self.test_dir, safe_filename),'w') as f:
             f.write("Safe Content")
 
         malicious_request = "../../../secret.txt"

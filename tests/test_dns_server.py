@@ -33,7 +33,7 @@ class TestDNSServer(unittest.TestCase):
         server.find_ip("test.local", client_address)
 
         expected_response = b"RESOLVED:192.168.1.50"
-        server.server_sock.sendto.assert_called_once_with(expected_response, client_address)
+        server.serv_sock.sendto.assert_called_once_with(expected_response, client_address)
 
     @patch('socket.socket')
     def test_find_ip_not_found(self, mock_socket_class):
@@ -44,7 +44,7 @@ class TestDNSServer(unittest.TestCase):
         server.find_ip("unknown.local", client_address)
 
         expected_response = b"ERROR:Domain not found"
-        server.server_sock.sendto.assert_called_once_with(expected_response, client_address)
+        server.serv_sock.sendto.assert_called_once_with(expected_response, client_address)
 
 
 if __name__ == '__main__':

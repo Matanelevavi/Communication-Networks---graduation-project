@@ -21,16 +21,16 @@ class FileAgent:
     #check if we already have today's forecast for the city to keep time and API calls
     def get_cached_forecast(self, city_name):
         filename = f"{city_name}_forecast.txt"
-        file_path = os.path.join(self.data_folder, filename)
+        filepath = os.path.join(self.data_folder,filename)
 
-        if os.path.exists(file_path):
-            file_timestamp = os.path.getmtime(file_path)
+        if os.path.exists(filepath):
+            file_timestamp = os.path.getmtime(filepath)
             file_date = date.fromtimestamp(file_timestamp)
 
             if file_date == date.today():
                 logging.info(f"CACHE HIT: Served '{city_name}' from local storage")
                 try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
+                    with open(filepath, 'r', encoding='utf-8') as f:
                         content = f.read()
                         return content.replace("DAILY RECOMMENDATION\n\n", "", 1).strip()
                 except Exception as e:
@@ -51,8 +51,8 @@ class FileAgent:
             logging.error(f"Save text error: {e}")
 
     #save binary data into a file safely using the lock
-    def save_binary_file(self, filename, binary_data):
-        file_path = os.path.join(self.data_folder, filename)
+    def save_binary_file(self, filename,binary_data):
+        file_path = os.path.join(self.data_folder,filename)
         try:
             with self.lock:
                 with open(file_path, 'wb') as f:
@@ -66,12 +66,12 @@ class FileAgent:
         try:
             files = os.listdir(self.data_folder)
             if not files:
-                return "FTP Directory is empty."
+                return "FTP Directory is empty"
 
             lines = ["--- WEATHERWEAR FTP ARCHIVE ---"]
             for file in files:
-                filepath = os.path.join(self.data_folder, file)
-                size_kb = os.path.getsize(filepath) / 1024
+                filepath = os.path.join(self.data_folder,file)
+                size_kb = os.path.getsize(filepath)/1024
                 # Using a simple dash instead of folder icons
                 lines.append(f"- {file} (Size: {size_kb:.1f} KB)")
 
@@ -108,7 +108,7 @@ class FileAgent:
 
                     elif line.startswith("202"):
                         parts = line.split(',')
-                        if len(parts) >= 3:
+                        if len(parts)>= 3:
                             time_str = parts[0].replace("T", "  ")
                             temp = parts[1]
                             rain = parts[2]

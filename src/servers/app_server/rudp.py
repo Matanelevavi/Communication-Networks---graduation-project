@@ -16,32 +16,32 @@ class RUDP:
         self.chunk_size = 800
 
     #break data into chunks add headers with seq and checksum and send them using a sliding window. Resend lost packets.
-    def reliable_send(self, data, addr):
-        if isinstance(data, str):
+    def reliable_send(self,data,addr):
+        if isinstance(data,str):
             data = data.encode('utf-8')
 
         #efficient integer division ceiling
-        total_chunks = (len(data)+self.chunk_size-1) // self.chunk_size
-        if total_chunks == 0:
+        total_chunks = (len(data)+self.chunk_size-1)//self.chunk_size
+        if total_chunks== 0:
             total_chunks = 1
 
         # Pythonic chunk generation
         chunks = {
-            i + 1: data[i * self.chunk_size : (i + 1) * self.chunk_size]
+            i+1: data[i*self.chunk_size :(i+1) * self.chunk_size]
             for i in range(total_chunks)
         }
 
         unacked = set(chunks.keys())
-        window_start = 1
+        wind_start = 1
         retry_count = 0
         dup_ack_count = 0
 
         logging.info(f"Transferring {total_chunks} chunks to {addr}")
 
         while unacked and retry_count<MAX_RETRIES:
-            window_end = min(window_start+int(self.cwnd),total_chunks+1)
+            wind_end = min(wind_start+int(self.cwnd),total_chunks+1)
 
-            for seq in range(window_start, window_end):
+            for seq in range(wind_start, wind_end):
                 if seq in unacked:
                     chk = zlib.crc32(chunks[seq])&0xffffffff
                     header = f"SEQ:{seq}|TOTAL:{total_chunks}|CHK:{chk}|".encode('utf-8')
@@ -68,7 +68,7 @@ class RUDP:
                     if ack_seq in unacked:
                         unacked.remove(ack_seq)
                         retry_count = 0
-                        if ack_seq > window_start:
+                        if ack_seq>wind_start:
                             dup_ack_count += 1
                         else:
                             dup_ack_count = 0
@@ -77,19 +77,19 @@ class RUDP:
                         self.cwnd = min(self.cwnd+1.0,self.max_cwnd)
 
                         #slide the window forward
-                        while window_start not in unacked and window_start<=total_chunks:
-                            window_start += 1
+                        while wind_start not in unacked and wind_start<=total_chunks:
+                            wind_start += 1
                             dup_ack_count = 0
 
                         if dup_ack_count == 3:
-                            logging.warning(f"Fast Retransmit triggered for missing packet {window_start}")
+                            logging.warning(f"Fast Retransmit triggered for missing packet {wind_start}")
                             self.cwnd = max(self.cwnd/2.0,1.0)#multiplicative decrease
 
 
-                            if window_start in unacked:
-                                chk = zlib.crc32(chunks[window_start]) & 0xffffffff
-                                header = f"SEQ:{window_start}|TOTAL:{total_chunks}|CHK:{chk}|".encode('utf-8')
-                                self.sock.sendto(header+chunks[window_start], addr)
+                            if wind_start in unacked:
+                                chk = zlib.crc32(chunks[wind_start]) & 0xffffffff
+                                header = f"SEQ:{wind_start}|TOTAL:{total_chunks}|CHK:{chk}|".encode('utf-8')
+                                self.sock.sendto(header+chunks[wind_start], addr)
 
                             dup_ack_count = 0
 
@@ -108,4 +108,4 @@ class RUDP:
         if not unacked:
             logging.info(f"Transfer to {addr} complete.")
         else:
-            logging.warning(f"Transfer to {addr} aborted. Max retries reached.")
+            logging.warning(f"Transfer to {addr} aborted. max retries reached.")
