@@ -14,13 +14,13 @@ class TestRUDPHandler(unittest.TestCase):
         test_data = "Hello World 123"
 
         mock_sock.recvfrom.side_effect = [
-            (b"ACK:1", ("127.0.0.1", 9999)),
-            (b"ACK:2", ("127.0.0.1", 9999))
+            (b"ACK:1", ("127.0.0.1",9999)),
+            (b"ACK:2", ("127.0.0.1",9999))
         ]
 
-        handler.reliable_send(test_data, ("127.0.0.1", 9999))
+        handler.reliable_send(test_data, ("127.0.0.1",9999))
 
-        self.assertGreaterEqual(mock_sock.sendto.call_count, 2)
+        self.assertGreaterEqual(mock_sock.sendto.call_count,2)
 
         first_packet = mock_sock.sendto.call_args_list[0][0][0]
         second_packet = mock_sock.sendto.call_args_list[1][0][0]

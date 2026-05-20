@@ -5,9 +5,9 @@ import sys
 import time
 import zlib
 from src.config import *
-from src.client.gui import get_user_data_gui, show_result_gui, show_ftp_list_gui
+from src.client.gui import get_user_data_gui,show_result_gui,show_ftp_list_gui
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s -CLIENT- %(message)s', datefmt='%H:%M:%S', stream=sys.stdout)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s -CLIENT- %(message)s',datefmt='%H:%M:%S',stream=sys.stdout)
 
 class NetworkClient:
     #setup the main client socket and prepare variables for IP and DNS cache
@@ -15,41 +15,41 @@ class NetworkClient:
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.client_socket.bind((HOST,0))
         self.client_socket.settimeout(TIMEOUT)
-        self.my_ip = None
-        self.app_server_ip = None
-        self.dns_cache = {}
-        self.DNS_TTL = DNS_CACHE_TTL
+        self.my_ip =None
+        self.app_server_ip= None
+        self.dns_cache ={}
+        self.DNS_TTL =DNS_CACHE_TTL
 
     #ask the DHCP server for an IP address using the DORA
     def get_ip_via_dhcp(self):
         logging.info("Starting DHCP DORA")
         try:
-            self.client_socket.sendto(DISCOVER_MSG.encode(ENCODING), DHCP_ADD)
-            self.client_socket.sendto(DISCOVER_MSG.encode(ENCODING), DHCP_BACKUP_ADD)
+            self.client_socket.sendto(DISCOVER_MSG.encode(ENCODING),DHCP_ADD)
+            self.client_socket.sendto(DISCOVER_MSG.encode(ENCODING),DHCP_BACKUP_ADD)
 
             while True:
                 try:
-                    data, server_addr = self.client_socket.recvfrom(BUFF_SIZE)
-                    offer = data.decode(ENCODING)
+                    data,server_addr = self.client_socket.recvfrom(BUFF_SIZE)
+                    offer=data.decode(ENCODING)
 
                     if offer.startswith(OFFER_MSG):
-                        offered_ip = offer.split(":")[1]
+                        offered_ip=offer.split(":")[1]
                         logging.info(f"Got OFFER: {offered_ip} from {server_addr[1]}")
 
                         req_msg = f"{REQUEST_MSG}:{offered_ip}"
-                        self.client_socket.sendto(req_msg.encode(ENCODING), server_addr)
+                        self.client_socket.sendto(req_msg.encode(ENCODING),server_addr)
 
                         while True:
                             try:
-                                ack_data, _ = self.client_socket.recvfrom(BUFF_SIZE)
+                                ack_data,_= self.client_socket.recvfrom(BUFF_SIZE)
                                 ack = ack_data.decode(ENCODING)
 
                                 if ack.startswith(ACK_MSG):
-                                    self.my_ip = ack.split(":")[1]
-                                    logging.info(f"DHCP successful. My IP: {self.my_ip}")
+                                    self.my_ip=ack.split(":")[1]
+                                    logging.info(f"DHCP successful, My IP: {self.my_ip}")
                                     return True
                                 elif ack.startswith(OFFER_MSG):
-                                    continue # ignore late offers
+                                    continue #ignore late offers
                             except ConnectionResetError:
                                 continue
 
@@ -60,11 +60,11 @@ class NetworkClient:
             logging.error("DHCP Timeout")
             return False
 
-    #check the local cache for the server's IP. If it's old or missing ask the DNS server
+    #check the local cache for the server's IP, if it's old or missing ask the DNS server
     def resolve_dns(self, target_domain):
         # check cache first with TTL
         if target_domain in self.dns_cache:
-            cached_ip, timestamp = self.dns_cache[target_domain]
+            cached_ip, timestamp =self.dns_cache[target_domain]
             if time.time()-timestamp<self.DNS_TTL:
                 logging.info(f"DNS resolved from cache: {cached_ip} (TTL valid)")
                 return cached_ip
@@ -72,7 +72,7 @@ class NetworkClient:
                 logging.info(f"DNS cache for {target_domain} expired. Fetching fresh IP.")
                 del self.dns_cache[target_domain]
 
-        logging.info(f"Resolving {target_domain} via network")
+        logging.info(f"resolving {target_domain} via network")
         try:
             self.client_socket.sendto(target_domain.encode(ENCODING), DNS_ADD)
             data, _ = self.client_socket.recvfrom(BUFF_SIZE)
@@ -93,9 +93,9 @@ class NetworkClient:
     #connect to the server using standard TCP send the JSON request and wait for the response
     def tcp_send_and_receive(self, payload_str):
         logging.info("[TCP] Connecting")
-        tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        tcp_sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         try:
-            tcp_sock.connect((self.app_server_ip, APP_PORT))
+            tcp_sock.connect((self.app_server_ip,APP_PORT))
             tcp_sock.sendall(payload_str.encode(ENCODING))
             tcp_sock.settimeout(TCP_TIMEOUT)
 
@@ -103,7 +103,7 @@ class NetworkClient:
             try:
                 return response.decode(ENCODING)
             except UnicodeDecodeError:
-                return response # return raw bytes for files
+                return response #return raw bytes for files
 
         except Exception as e:
             logging.error(f"[TCP] Error: {e}")
@@ -112,9 +112,9 @@ class NetworkClient:
             tcp_sock.close()
 
     #send data using our RUDP, check checksums handle chunks and send ACKs.
-    def reliable_send_and_receive(self, payload_str):
-        addr = (self.app_server_ip, APP_PORT)
-        udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    def reliable_send_and_receive(self,payload_str):
+        addr = (self.app_server_ip,APP_PORT)
+        udp_sock =socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
         udp_sock.settimeout(RUDP_TIMEOUT)
 
         packet = f"SEQ:1|{payload_str}"
@@ -123,11 +123,11 @@ class NetworkClient:
         #send request with retries
         for attempt in range(MAX_RETRIES):
             logging.info(f"[RUDP] Sending request ({attempt+1}/{MAX_RETRIES})")
-            udp_sock.sendto(packet.encode(ENCODING), addr)
+            udp_sock.sendto(packet.encode(ENCODING),addr)
             try:
-                ack_data, _ = udp_sock.recvfrom(BUFF_SIZE)
+                ack_data, _ =udp_sock.recvfrom(BUFF_SIZE)
                 if ack_data.decode(ENCODING) == "ACK:1":
-                    ack_ok = True
+                    ack_ok =True
                     break
             except socket.timeout:
                 pass
@@ -147,7 +147,7 @@ class NetworkClient:
             try:
                 data, server_info = udp_sock.recvfrom(BUFF_SIZE*8+500)
                 parts = data.split(b'|', 3)
-                if len(parts) == 4:
+                if len(parts) ==4:
                     seq = int(parts[0].split(b':')[1])
                     total = int(parts[1].split(b':')[1])
                     expected_chk = int(parts[2].split(b':')[1])
@@ -182,12 +182,12 @@ class NetworkClient:
                 udp_sock.close()
                 return None
 
-    #gracefully close the connection with the App Server (FIN) and release the IP to the DHCP Server
+    #close the connection with the App Server and release the IP to the DHCP Server
     def close(self):
         try:
             if self.app_server_ip:
                 logging.info("[TEARDOWN] Sending FIN to server")
-                self.client_socket.sendto(b"FIN", (self.app_server_ip, APP_PORT))
+                self.client_socket.sendto(b"FIN",(self.app_server_ip, APP_PORT))
                 self.client_socket.settimeout(2.0)
                 try:
                     ack_data, _ = self.client_socket.recvfrom(1024)
@@ -198,8 +198,8 @@ class NetworkClient:
             if self.my_ip:
                 logging.info(f"[TEARDOWN] Releasing IP {self.my_ip}")
                 release_msg = f"DHCP_RELEASE:{self.my_ip}"
-                self.client_socket.sendto(release_msg.encode(ENCODING), DHCP_ADD)
-                self.client_socket.sendto(release_msg.encode(ENCODING), DHCP_BACKUP_ADD)
+                self.client_socket.sendto(release_msg.encode(ENCODING),DHCP_ADD)
+                self.client_socket.sendto(release_msg.encode(ENCODING),DHCP_BACKUP_ADD)
 
             self.client_socket.close()
         except Exception:

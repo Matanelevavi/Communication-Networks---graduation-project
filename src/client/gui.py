@@ -35,7 +35,7 @@ def get_user_data_gui():
     root.geometry("550x550")
     root.configure(bg="#eef2f5")
 
-    root.protocol("WM_DELETE_WINDOW", on_closing)
+    root.protocol("WM_DELETE_WINDOW",on_closing)
 
     header = tk.Frame(root, bg="#34495e", pady=15)
     header.pack(fill=tk.X)
@@ -50,7 +50,7 @@ def get_user_data_gui():
     tk.Radiobutton(action_frame, text="View History Archive", variable=action_var, value="FTP_LIST", bg="#ffffff", font=("Helvetica", 10)).pack(anchor=tk.W)
 
     # 2. Details Card
-    details_frame = tk.LabelFrame(root, text=" 2. Details (For Forecast) ", font=("Helvetica", 11, "bold"), bg="#ffffff", padx=10, pady=10)
+    details_frame = tk.LabelFrame(root, text=" 2. Details (For Forecast) ",font=("Helvetica", 11, "bold"), bg="#ffffff", padx=10, pady=10)
     details_frame.pack(fill=tk.X, padx=20, pady=10)
 
     tk.Label(details_frame, text="City:", font=("Helvetica", 10), bg="#ffffff").pack(anchor=tk.W)
@@ -84,7 +84,7 @@ def show_ftp_list_gui(list_text):
     root.geometry("400x400")
     root.configure(bg="#eef2f5")
 
-    tk.Label(root, text="Double click a file to open", font=("Helvetica", 12, "bold"), bg="#eef2f5", pady=10).pack()
+    tk.Label(root, text="Double click a file to open",font=("Helvetica", 12, "bold"), bg="#eef2f5", pady=10).pack()
 
     listbox = tk.Listbox(root, font=("Helvetica", 12), selectbackground="#3498db", relief=tk.FLAT)
     listbox.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
