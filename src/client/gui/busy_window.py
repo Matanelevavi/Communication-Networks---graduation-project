@@ -11,11 +11,12 @@ class BusyWindow(BaseWindow):
     Shown while a request is on the wire.
 
     Without it the interface simply disappears for a couple of seconds while
-    the server talks to two external services, which reads as a freeze. The
-    work runs on a thread and the window polls it, so Tk keeps redrawing.
+    the server talks to an external service, which reads as a freeze. The work
+    runs on a thread and the window polls it, so Tk keeps redrawing.
     """
 
-    size = "360x150"
+    min_width = 340
+    min_height = 130
     resizable = False
 
     def __init__(self, message: str, work) -> None:
@@ -23,6 +24,7 @@ class BusyWindow(BaseWindow):
         self.work = work
         self.error = None
         self.finished = False
+        self.start_job = None
         self.title = "WeatherWear"
         super().__init__()
 
@@ -31,12 +33,14 @@ class BusyWindow(BaseWindow):
         frame.pack(fill=tk.BOTH, expand=True)
 
         tk.Label(frame, text=self.message, font=theme.body_bold(), fg=theme.INK,
-                 bg=theme.SURFACE).pack(pady=(34, 6))
+                 bg=theme.SURFACE, wraplength=300).pack(pady=(30, 6), padx=20)
         self.dots = tk.Label(frame, text="", font=theme.heading(), fg=theme.BRAND,
                              bg=theme.SURFACE)
         self.dots.pack()
 
-        self.root.after(60, self._start)
+        # kept so the work can be called off before it begins; the short delay
+        # lets the window paint before the request blocks a thread
+        self.start_job = self.root.after(60, self._start)
         self._animate(0)
 
     def _start(self) -> None:
