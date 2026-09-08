@@ -1,11 +1,15 @@
 """
 The daily forecast cache.
 
-Saves a repeated request for the same city from calling the two external HTTP
-services again.  Validity is decided by the modification *date* of the file:
-a forecast written yesterday is stale even if it is only minutes old, because
-"today's forecast" is a daily idea and not a rolling window.
+Saves a repeated request for the same city from calling the external services
+again. Validity is decided by the modification *date* of the file: a forecast
+written yesterday is stale even if it is only minutes old, because "today's
+forecast" is a daily idea and not a rolling window.
+
+The whole answer is stored, not just the advice, so a cache hit can rebuild the
+same card the first request produced.
 """
+import json
 import logging
 from datetime import date
 
@@ -13,7 +17,7 @@ from src.servers.app_server.storage import FileStore
 
 log = logging.getLogger(__name__)
 
-HEADER = "DAILY RECOMMENDATION\n\n"
+SUFFIX = "_forecast.json"
 
 
 class ForecastCache:
@@ -24,10 +28,10 @@ class ForecastCache:
 
     @staticmethod
     def filename(city: str) -> str:
-        return f"{city}_forecast.txt"
+        return f"{city}{SUFFIX}"
 
-    def get(self, city: str) -> str | None:
-        """Today's stored advice for a city, or ``None`` if there is none."""
+    def get(self, city: str) -> dict | None:
+        """Today's stored forecast for a city, or ``None`` if there is none."""
         name = self.filename(city)
         modified = self.store.modified_at(name)
         if modified is None:
@@ -41,9 +45,16 @@ class ForecastCache:
         if raw is None:
             return None
 
-        log.info(f"CACHE HIT: Served '{city}' from local storage")
-        return raw.decode("utf-8", errors="replace").replace(HEADER, "", 1).strip()
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError) as e:
+            log.warning(f"Discarding an unreadable cache entry for '{city}': {e}")
+            return None
 
-    def put(self, city: str, advice: str) -> bool:
-        """Store today's advice for a city."""
-        return self.store.write_text(self.filename(city), HEADER + advice)
+        log.info(f"CACHE HIT: Served '{city}' from local storage")
+        return payload
+
+    def put(self, city: str, payload: dict) -> bool:
+        """Store today's forecast for a city."""
+        return self.store.write_text(
+            self.filename(city), json.dumps(payload, indent=2, ensure_ascii=False))

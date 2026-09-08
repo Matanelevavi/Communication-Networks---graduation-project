@@ -9,6 +9,31 @@ import os
 import sys
 
 
+def _load_dotenv(path):
+    """
+    Read simple KEY=VALUE lines from a local .env into the environment.
+
+    Keeps a secret out of both the source and the shell profile, without
+    pulling in a dependency for four lines of parsing. Existing environment
+    variables always win, so an explicit export still overrides the file.
+    """
+    try:
+        with open(path, encoding="utf-8") as env_file:
+            lines = env_file.readlines()
+    except OSError:
+        return
+
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
+_load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
+
+
 def _flag(name, default=False):
     """Read a boolean switch from the environment, falling back to the default."""
     raw = os.environ.get(name)
@@ -71,11 +96,14 @@ MAX_REQUEST_SIZE = 64 * 1024        # largest request accepted from a client
 MAX_RESPONSE_SIZE = 512 * 1024      # largest payload one RUDP transfer may carry
 
 # ------------------------------------------------------------- api config ---
-# The key is read from the environment first so it never has to live in git.
-# The literal below is only a development fallback: set GEMINI_API_KEY (or turn
-# MOCK_LLM on) to run without it.
-API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyB-zhhBeIjMCDMbmVcmEOLm3YJhKcogtTE")
-MOCK_LLM = _flag("MOCK_LLM", False)
+# The Gemini key is optional. Without one the app still produces a real,
+# personalised forecast from live weather data; a key only upgrades the wording
+# to an AI written paragraph.
+#
+# A key must never be committed: Google scans public code for its own keys and
+# revokes any it finds, so a hardcoded key stops working on its own. Put it in
+# a local .env file (git ignored) or in the environment.
+API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 # ------------------------------------------------------------ custom rudp ---
 RUDP_TIMEOUT = 3.0          # client-side timeout while waiting for the handshake ACK

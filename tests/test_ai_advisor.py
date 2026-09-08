@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import requests
 
-from src.servers.app_server.ai_advisor import GEMINI_URL, MOCK_ADVICE, AiAdvisor
+from src.servers.app_server.ai_advisor import GEMINI_URL, AiAdvisor
 from src.servers.app_server.external_service import ServiceError
 from src.servers.app_server.weather_api import Forecast, Place
 
@@ -14,7 +14,7 @@ ANSWER = {"candidates": [{"content": {"parts": [{"text": "Wear a hat"}]}}]}
 
 
 def advisor():
-    return AiAdvisor(api_key="test-key", use_mock=False)
+    return AiAdvisor(api_key="test-key")
 
 
 class TestPrompt(unittest.TestCase):
@@ -27,13 +27,18 @@ class TestPrompt(unittest.TestCase):
         self.assertIn("Dana", prompt)
 
 
-class TestMockMode(unittest.TestCase):
+class TestOptionality(unittest.TestCase):
+    """No key is a normal state, not a crash: the caller falls back."""
+
+    def test_it_reports_whether_it_is_configured(self):
+        self.assertFalse(AiAdvisor(api_key="").is_configured)
+        self.assertTrue(AiAdvisor(api_key="k").is_configured)
 
     @patch("src.servers.app_server.ai_advisor.requests.post")
-    def test_no_call_is_made(self, post):
-        answer = AiAdvisor(api_key="", use_mock=True).recommend(FORECAST, [])
+    def test_without_a_key_it_raises_before_touching_the_network(self, post):
+        with self.assertRaises(ServiceError):
+            AiAdvisor(api_key="").recommend(FORECAST, [])
 
-        self.assertEqual(answer, MOCK_ADVICE)
         post.assert_not_called()
 
 

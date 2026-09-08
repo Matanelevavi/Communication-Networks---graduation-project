@@ -2,14 +2,16 @@
 Gemini client.
 
 Turns a forecast and a family description into one paragraph of clothing
-advice.  Anything that goes wrong is raised, never returned, so the caller can
-never mistake an outage for a recommendation and store it in the cache.
+advice. Optional by design: without a key it reports itself as unconfigured and
+:class:`~src.servers.app_server.advisor.ClothingAdvisor` falls back to the local
+rules. Anything that goes wrong is raised, never returned, so a caller can never
+mistake an outage for a recommendation and store it in the cache.
 """
 import logging
 
 import requests
 
-from src.config import API_KEY, HTTP_TIMEOUT, MOCK_LLM
+from src.config import API_KEY, HTTP_TIMEOUT
 from src.servers.app_server.external_service import ExternalService, ServiceError
 from src.servers.app_server.weather_api import Forecast
 
@@ -18,26 +20,24 @@ log = logging.getLogger(__name__)
 GEMINI_URL = ("https://generativelanguage.googleapis.com/v1beta/"
               "models/gemini-2.5-flash:generateContent")
 
-MOCK_ADVICE = ("Mock: It's a nice day! Wear light clothes\n"
-               "Note: set GEMINI_API_KEY to get personalized AI recommendations!")
-
 
 class AiAdvisor(ExternalService):
-    """Asks Gemini what to wear."""
+    """Asks Gemini what to wear, when a key is available."""
 
-    def __init__(self, api_key: str = API_KEY, use_mock: bool = MOCK_LLM) -> None:
+    def __init__(self, api_key: str = API_KEY) -> None:
         self.api_key = api_key
-        self.use_mock = use_mock
+
+    @property
+    def is_configured(self) -> bool:
+        """False when no key is set, which is a normal state and not an error."""
+        return bool(self.api_key)
 
     def recommend(self, forecast: Forecast, profiles) -> str:
         """One paragraph of advice.  Raises :class:`ServiceError` on failure."""
+        if not self.is_configured:
+            raise ServiceError("AI Error: no GEMINI_API_KEY is configured.")
+
         self.require_english(profiles, "the family profiles")
-
-        if self.use_mock:
-            # A full answer on purpose, so the rest of the pipeline can be
-            # demonstrated end to end without a live API key.
-            return MOCK_ADVICE
-
         return self._ask(self.build_prompt(forecast, profiles))
 
     @staticmethod
