@@ -1,0 +1,4 @@
+# Runtime dependency: the HTTP client used by logic.py to reach
+# Open-Meteo and the Gemini API.  Everything else (socket, threading,
+# json, zlib, tkinter) is in the Python standard library.
+requests>=2.31

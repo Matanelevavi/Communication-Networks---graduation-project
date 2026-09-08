@@ -1,0 +1,22 @@
+# virtual environment
+.venv/
+venv/
+
+# python bytecode
+__pycache__/
+*.py[cod]
+
+# IDE
+.idea/
+.vscode/
+
+# test artefacts
+.pytest_cache/
+test_dummy_data/
+
+# generated at runtime by the FileAgent (cache + FTP archive)
+data/*.txt
+data/*.csv
+
+# local secrets
+.env
