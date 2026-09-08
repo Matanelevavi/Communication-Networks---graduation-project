@@ -4,6 +4,7 @@ The FTP style archive.
 Two operations in the spirit of FTP, list and get, carried inside the same
 JSON protocol as everything else rather than over a separate control channel.
 """
+import json
 import logging
 
 from src.servers.app_server.storage import FileStore
@@ -52,8 +53,42 @@ class FileArchive:
         if filename.endswith(".csv"):
             return self.format_csv(filename, text)
 
+        if filename.endswith(".json"):
+            return self.format_forecast(filename, text)
+
         log.info(f"FTP read successful for {filename}")
         return text
+
+    @staticmethod
+    def format_forecast(filename: str, content: str) -> str:
+        """
+        Render a stored forecast card as a report.
+
+        The cache keeps the answer as data so the client can lay it out; the
+        archive is read by a person, so it gets prose and aligned labels.
+        """
+        try:
+            card = json.loads(content)
+        except ValueError:
+            return content
+
+        source = "AI advisor" if card.get("source") == "ai" else "local advisor"
+        rows = [
+            f"Forecast for {card.get('city', 'unknown')}",
+            "=" * TABLE_WIDTH,
+            f"{'Low':<12}{card.get('min_temp', '?')}°C",
+            f"{'High':<12}{card.get('max_temp', '?')}°C",
+            f"{'Now':<12}{card.get('current_temp', '?')}°C",
+            f"{'Rain':<12}{card.get('rain', 'unknown')}",
+            "-" * TABLE_WIDTH,
+            "What to wear:",
+            "",
+            card.get("advice", ""),
+            "",
+            f"(written by the {source})",
+        ]
+        log.info(f"Rendered the stored forecast in {filename}")
+        return "\n".join(rows) + "\n"
 
     @staticmethod
     def format_csv(filename: str, content: str) -> str:

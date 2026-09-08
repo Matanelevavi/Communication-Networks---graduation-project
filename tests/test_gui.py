@@ -34,16 +34,21 @@ class TestListingParsing(unittest.TestCase):
                "- Ariel_forecast.txt (Size: 0.7 KB)\n"
                "- Tel Aviv report.csv (Size: 4.1 KB)\n")
 
-    def test_names_are_read_out_of_the_rows(self):
-        self.assertEqual(parse_listing(self.LISTING),
+    def test_names_and_sizes_are_read_out_of_the_rows(self):
+        self.assertEqual([name for name, _size in parse_listing(self.LISTING)],
                          ["Ariel_forecast.txt", "Tel Aviv report.csv"])
+
+    def test_the_size_is_kept_for_display(self):
+        self.assertEqual(parse_listing(self.LISTING)[0][1], "0.7 KB")
 
     def test_a_name_containing_a_space_stays_whole(self):
         """Splitting on whitespace used to cut such a name in half."""
-        self.assertIn("Tel Aviv report.csv", parse_listing(self.LISTING))
+        self.assertIn("Tel Aviv report.csv",
+                      [name for name, _size in parse_listing(self.LISTING)])
 
     def test_the_banner_is_not_a_file(self):
-        self.assertNotIn("--- WEATHERWEAR FTP ARCHIVE ---", parse_listing(self.LISTING))
+        self.assertNotIn("--- WEATHERWEAR FTP ARCHIVE ---",
+                         [name for name, _size in parse_listing(self.LISTING)])
 
     def test_an_empty_archive_yields_no_names(self):
         self.assertEqual(parse_listing("FTP Directory is empty"), [])

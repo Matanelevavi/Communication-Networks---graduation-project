@@ -32,12 +32,12 @@ class FileAgent:
         return self.store.folder
 
     # -------------------------------------------------------------- cache
-    def cached_forecast(self, city: str) -> str | None:
-        """Today's stored advice for a city, or ``None``."""
+    def cached_forecast(self, city: str) -> dict | None:
+        """Today's stored forecast card for a city, or ``None``."""
         return self.cache.get(city)
 
-    def store_forecast(self, city: str, advice: str) -> bool:
-        return self.cache.put(city, advice)
+    def store_forecast(self, city: str, card: dict) -> bool:
+        return self.cache.put(city, card)
 
     def store_report(self, city: str, csv_bytes: bytes) -> bool:
         """Keep the raw hourly data alongside the advice, for the archive."""

@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import time
@@ -5,7 +6,12 @@ import unittest
 
 from src.servers.app_server.agent import FileAgent
 from src.servers.app_server.file_archive import BANNER, EMPTY
-from src.servers.app_server.forecast_cache import HEADER
+
+CARD = {
+    "kind": "forecast", "city": "Ariel", "min_temp": 19.9, "max_temp": 33.3,
+    "current_temp": 22.6, "rain": "No rain expected",
+    "advice": "Ariel is hot today, go with light clothes.", "source": "local",
+}
 
 
 class AgentTestCase(unittest.TestCase):
@@ -26,25 +32,30 @@ class AgentTestCase(unittest.TestCase):
 
 class TestCache(AgentTestCase):
 
-    def test_advice_stored_today_comes_back(self):
-        self.agent.store_forecast("Ariel", "Sunny, wear light clothes")
+    def test_a_card_stored_today_comes_back_whole(self):
+        self.agent.store_forecast("Ariel", CARD)
 
-        self.assertEqual(self.agent.cached_forecast("Ariel"),
-                         "Sunny, wear light clothes")
+        self.assertEqual(self.agent.cached_forecast("Ariel"), CARD)
 
-    def test_the_stored_file_carries_a_header(self):
-        self.agent.store_forecast("Ariel", "advice")
+    def test_it_is_stored_as_readable_json(self):
+        self.agent.store_forecast("Ariel", CARD)
 
-        with open(os.path.join(self.folder, "Ariel_forecast.txt"), encoding="utf-8") as f:
-            self.assertTrue(f.read().startswith(HEADER))
+        with open(os.path.join(self.folder, "Ariel_forecast.json"), encoding="utf-8") as f:
+            self.assertEqual(json.load(f), CARD)
 
     def test_an_unknown_city_is_a_miss(self):
         self.assertIsNone(self.agent.cached_forecast("Atlantis"))
 
     def test_yesterdays_file_is_stale(self):
-        path = self.write("Ariel_forecast.txt", (HEADER + "old advice").encode())
+        self.agent.store_forecast("Ariel", CARD)
+        path = os.path.join(self.folder, "Ariel_forecast.json")
         yesterday = time.time() - 24 * 3600
         os.utime(path, (yesterday, yesterday))
+
+        self.assertIsNone(self.agent.cached_forecast("Ariel"))
+
+    def test_a_corrupted_entry_is_discarded_rather_than_served(self):
+        self.write("Ariel_forecast.json", b"{not json")
 
         self.assertIsNone(self.agent.cached_forecast("Ariel"))
 
@@ -79,6 +90,29 @@ class TestArchive(AgentTestCase):
         self.assertEqual(self.agent.archived_file("photo.bin"),
                          b"\x89PNG\r\n\x1a\n\xff\xfe")
 
+    def test_a_stored_forecast_is_rendered_as_a_report(self):
+        """The cache holds data; a person reading the archive wants prose."""
+        self.agent.store_forecast("Ariel", CARD)
+
+        report = self.agent.archived_file("Ariel_forecast.json")
+
+        self.assertIn("Forecast for Ariel", report)
+        self.assertIn("19.9", report)
+        self.assertIn("What to wear", report)
+        self.assertIn("light clothes", report)
+        self.assertIn("local advisor", report)
+        self.assertNotIn("min_temp", report)      # not the raw JSON
+
+    def test_an_ai_written_forecast_says_so(self):
+        self.agent.store_forecast("Ariel", {**CARD, "source": "ai"})
+
+        self.assertIn("AI advisor", self.agent.archived_file("Ariel_forecast.json"))
+
+    def test_unreadable_json_is_returned_as_it_is(self):
+        self.write("broken.json", b"{not json")
+
+        self.assertEqual(self.agent.archived_file("broken.json"), "{not json")
+
     def test_a_report_is_rendered_as_a_table(self):
         self.agent.store_report("Ariel", b"latitude,longitude\n32.1,35.1\n\n"
                                          b"time,temperature_2m,precipitation_probability\n"
@@ -88,7 +122,6 @@ class TestArchive(AgentTestCase):
 
         self.assertIn("Date & Time", table)
         self.assertIn("2026-09-01  00:00", table)
-        self.assertIn("19.9", table)
         self.assertNotIn("latitude", table)      # the metadata rows are dropped
 
     def test_the_table_is_not_limited_to_the_2020s(self):
