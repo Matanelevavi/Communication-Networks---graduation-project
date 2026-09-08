@@ -78,7 +78,7 @@ collide with services the operating system already runs.
 
 ## Layout
 
-Each module has one job, and no file is longer than about 190 lines.
+Each module has one job. 39 modules, averaging 98 lines, none over 211.
 
 ```
 run.py                                launcher with a port readiness check
@@ -100,7 +100,11 @@ src/client/
   session.py                          the interactive loop
   gui/theme.py                        palette and type scale, named once
   gui/base.py                         the window every screen inherits
-  gui/windows.py                      the screens, including the forecast card
+  gui/parsing.py                      input and listings as data, no display needed
+  gui/request_window.py               the dashboard
+  gui/forecast_window.py              the answer, laid out as a card
+  gui/file_windows.py                 the archive listing and the file viewer
+  gui/busy_window.py                  shown while a request is on the wire
 
 src/servers/
   address_pool.py                     reservations, leases and their expiry

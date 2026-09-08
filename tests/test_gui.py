@@ -6,7 +6,7 @@ data handling and is tested here.
 """
 import unittest
 
-from src.client.gui.windows import parse_listing, parse_profiles, readable
+from src.client.gui.parsing import parse_listing, parse_profiles, readable
 
 
 class TestProfileParsing(unittest.TestCase):
