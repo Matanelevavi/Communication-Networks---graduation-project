@@ -78,7 +78,7 @@ collide with services the operating system already runs.
 
 ## Layout
 
-Each module has one job. 39 modules, averaging 98 lines, none over 211.
+Each module has one job. 39 modules, averaging 99 lines, none over 211.
 
 ```
 run.py                                launcher with a port readiness check
@@ -125,7 +125,7 @@ src/servers/
   app_server/file_archive.py          list, read, render a CSV as a table
   app_server/storage.py               guarded access to the data directory
 
-tests/                                265 unit tests, one file per module
+tests/                                275 unit tests, one file per module
 ```
 
 Three design decisions are worth pointing at:
@@ -220,10 +220,16 @@ an address nobody will claim.
 python -m unittest discover -s tests -t .
 ```
 
-265 unit tests covering the DHCP lease state machine, DNS answers, RUDP framing,
+275 unit tests covering the DHCP lease state machine, DNS answers, RUDP framing,
 congestion control and flow control, TCP message framing, storage, the advisor
 fallback and the external API clients. They use mocked sockets, so no server has
 to be running and nothing touches the network.
+
+Ten of them check the interface: that every window fits on the screen it is
+opened on, and that its action button and the transport choice are reachable
+without scrolling. A fixed pixel height had put those off the bottom edge on a
+display with system font scaling, so the layout is now asserted rather than
+assumed. They skip where there is no display.
 
 ## How a forecast is produced
 
