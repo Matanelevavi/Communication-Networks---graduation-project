@@ -17,6 +17,10 @@ test_dummy_data/
 # generated at runtime by the FileAgent (cache + FTP archive)
 data/*.txt
 data/*.csv
+data/*.json
 
 # local secrets
 .env
+
+# working notes, not part of the project
+CHANGES.md

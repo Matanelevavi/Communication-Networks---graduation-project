@@ -6,9 +6,15 @@ through a local **DNS** server, and then talks to an **application server**
 over either standard **TCP** or **RUDP**, a reliable protocol built from
 scratch on top of UDP.
 
-The service itself is a weather forecast with an AI generated clothing
-recommendation (Open-Meteo + Gemini), plus a small FTP style archive of past
-forecasts.
+The service itself is a real forecast with clothing advice written for the
+people you are dressing: it reads live weather from Open-Meteo, then says
+something different for a baby than for an adult, and mentions the hour rain
+starts rather than that it might rain. A Gemini key upgrades the wording to an
+AI written paragraph; without one the advice is generated locally from the same
+numbers, so the app is fully usable with no configuration at all.
+
+There is also a small FTP style archive of past forecasts and raw hourly
+reports.
 
 ## Running it
 
@@ -92,9 +98,9 @@ src/client/
   dns_resolver.py                     queries and a TTL aware cache
   transport.py                        Transport -> TcpTransport | RudpTransport
   session.py                          the interactive loop
-  gui/theme.py                        colours and fonts, named once
+  gui/theme.py                        palette and type scale, named once
   gui/base.py                         the window every screen inherits
-  gui/windows.py                      the three screens
+  gui/windows.py                      the screens, including the forecast card
 
 src/servers/
   address_pool.py                     reservations, leases and their expiry
@@ -106,14 +112,16 @@ src/servers/
   app_server/rudp_listener.py         RUDP handshakes and transfers
   app_server/router.py                request -> answer, transport agnostic
   app_server/weather_api.py           Open-Meteo client
-  app_server/ai_advisor.py            Gemini client
+  app_server/advisor.py               prefers the AI, guarantees an answer
+  app_server/ai_advisor.py            Gemini client, optional
+  app_server/local_advisor.py         advice from the forecast, no key needed
   app_server/external_service.py      shared validation and error type
   app_server/agent.py                 FileAgent: the cache and the archive
   app_server/forecast_cache.py        one forecast per city per day
   app_server/file_archive.py          list, read, render a CSV as a table
   app_server/storage.py               guarded access to the data directory
 
-tests/                                237 unit tests, one file per module
+tests/                                265 unit tests, one file per module
 ```
 
 Three design decisions are worth pointing at:
@@ -135,8 +143,7 @@ be edited mid-presentation:
 
 | Variable | Effect |
 |---|---|
-| `GEMINI_API_KEY` | API key for the clothing recommendation |
-| `MOCK_LLM=1` | Run the whole system with no API key at all |
+| `GEMINI_API_KEY` | Optional. Upgrades the advice to an AI written paragraph |
 | `SIMULATE_LOSS=1` | Drop packets at random (`LOSS_RATE`, default 0.2) |
 | `SIMULATE_DELAY=1` | Delay one packet (`DELAY_SEQ`, `DELAY_SECONDS`) to force a retransmit |
 | `RUDP_RECV_BUFFER=2` | Shrink the receive buffer to watch flow control throttle the sender |
@@ -144,10 +151,20 @@ be edited mid-presentation:
 ```bash
 SIMULATE_LOSS=1 python run.py          # watch retransmission and the window collapse
 RUDP_RECV_BUFFER=2 python run.py       # watch the receiver throttle the sender
-MOCK_LLM=1 python run.py               # no external AI call
 ```
 
 On Windows PowerShell: `$env:SIMULATE_LOSS=1; python run.py`
+
+### The Gemini key is optional
+
+Copy `.env.example` to `.env` and put a key in it if you want AI written
+advice. `.env` is git ignored, and a key should never be committed: Google
+scans public code for its own keys and revokes the ones it finds, so a
+hardcoded key stops working on its own.
+
+Without a key the app is not degraded into a placeholder. `LocalAdvisor`
+writes the recommendation from the same live numbers, and the interface says
+which advisor produced the text.
 
 ## The RUDP protocol
 
@@ -199,12 +216,40 @@ an address nobody will claim.
 python -m unittest discover -s tests -t .
 ```
 
-237 unit tests covering the DHCP lease state machine, DNS answers, RUDP framing,
-congestion control and flow control, TCP message framing, storage, and the
-external API clients. They use mocked sockets, so no server has to be running
-and nothing touches the network.
+265 unit tests covering the DHCP lease state machine, DNS answers, RUDP framing,
+congestion control and flow control, TCP message framing, storage, the advisor
+fallback and the external API clients. They use mocked sockets, so no server has
+to be running and nothing touches the network.
 
-## Documentation
+## How a forecast is produced
 
-[`CHANGES.md`](CHANGES.md) records every fix and refactor made to this
-codebase, with the reasoning behind each one.
+```
+FORECAST request
+      |
+      v
+  daily cache ---- hit ----> the stored card, marked cached
+      |
+     miss
+      v
+  Open-Meteo: geocode the city, then 24 hours of temperature and rain
+      |
+      v
+  ClothingAdvisor
+      |-- a key is set?  -> Gemini writes the paragraph        (source: ai)
+      |-- no key, or the call fails -> LocalAdvisor writes it  (source: local)
+      v
+  store the card and the raw CSV, answer with the card
+```
+
+The answer is a JSON object rather than prose, so the client lays the numbers
+out itself instead of parsing sentences:
+
+```json
+{
+  "kind": "forecast", "city": "Ariel",
+  "min_temp": 19.9, "max_temp": 33.3, "current_temp": 22.6,
+  "rain": "No rain expected",
+  "advice": "Ariel is hot today, 19.9° to 33.3°, so go with ...",
+  "source": "local", "cached": false
+}
+```
