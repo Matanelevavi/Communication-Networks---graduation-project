@@ -1,112 +1,119 @@
-import unittest
-from unittest.mock import patch, MagicMock
 import socket
-import time
+import unittest
+from unittest.mock import MagicMock, patch
 
 from src.client.client import NetworkClient
-from src.config import ENCODING, DISCOVER_MSG, OFFER_MSG, REQUEST_MSG, ACK_MSG, APP_PORT, DHCP_ADD, DHCP_BACKUP_ADD
+from src.client.transport import RudpTransport, TcpTransport
+from src.config import APP_PORT, CLIENT_ADD, FIN_ACK_MSG, FIN_MSG, HOST
+
+SERVER = ("127.0.0.1", APP_PORT)
 
 
-class TestNetworkClient(unittest.TestCase):
+@patch("src.client.client.socket.socket")
+class TestControlSocket(unittest.TestCase):
 
-    @patch('socket.socket')
-    def test_dhcp_success(self, mock_socket_class):
-        mock_sock = mock_socket_class.return_value
+    def test_it_uses_the_documented_client_port(self, socket_class):
+        NetworkClient()
 
-        mock_sock.recvfrom.side_effect = [
-            (f"{OFFER_MSG}:192.168.1.50".encode(ENCODING), ("127.0.0.1", 8067)),
-            (f"{ACK_MSG}:192.168.1.50".encode(ENCODING), ("127.0.0.1", 8067))
-        ]
+        socket_class.return_value.bind.assert_called_once_with(CLIENT_ADD)
 
+    def test_it_falls_back_when_the_port_is_busy(self, socket_class):
+        """A second client, used to demonstrate concurrency, must still start."""
+        sock = socket_class.return_value
+        sock.bind.side_effect = [OSError, None]
+        sock.getsockname.return_value = (HOST, 54321)
+
+        NetworkClient()
+
+        self.assertEqual(sock.bind.call_args[0][0], (HOST, 0))
+
+
+@patch("src.client.client.socket.socket")
+class TestJoiningTheNetwork(unittest.TestCase):
+
+    def test_connect_runs_dhcp_then_dns(self, _socket_class):
         client = NetworkClient()
-        result = client.get_ip_via_dhcp()
+        client.dhcp = MagicMock(**{"acquire.return_value": True, "my_ip": "192.168.1.50"})
+        client.dns = MagicMock(**{"resolve.return_value": "127.0.0.1"})
 
-        self.assertTrue(result)
+        self.assertTrue(client.connect("weatherwear.local"))
+        self.assertEqual(client.app_server_ip, "127.0.0.1")
         self.assertEqual(client.my_ip, "192.168.1.50")
 
-    @patch('socket.socket')
-    def test_dhcp_timeout(self, mock_socket_class):
-        mock_sock = mock_socket_class.return_value
-        mock_sock.recvfrom.side_effect = socket.timeout
-
+    def test_a_failed_dora_stops_before_dns(self, _socket_class):
         client = NetworkClient()
-        result = client.get_ip_via_dhcp()
+        client.dhcp = MagicMock(**{"acquire.return_value": False})
+        client.dns = MagicMock()
 
-        self.assertFalse(result)
-        self.assertIsNone(client.my_ip)
+        self.assertFalse(client.connect())
+        client.dns.resolve.assert_not_called()
 
-    @patch('socket.socket')
-    def test_resolve_dns_network(self, mock_socket_class):
-        mock_sock = mock_socket_class.return_value
-        mock_sock.recvfrom.return_value = ("RESOLVED:10.0.0.5".encode(ENCODING), ("127.0.0.1", 8053))
-
+    def test_a_failed_lookup_fails_the_connection(self, _socket_class):
         client = NetworkClient()
-        ip = client.resolve_dns("weatherwear.local")
+        client.dhcp = MagicMock(**{"acquire.return_value": True})
+        client.dns = MagicMock(**{"resolve.return_value": None})
 
-        self.assertEqual(ip, "10.0.0.5")
-        self.assertEqual(client.app_server_ip, "10.0.0.5")
-        self.assertIn("weatherwear.local", client.dns_cache)
+        self.assertFalse(client.connect())
 
-    @patch('socket.socket')
-    def test_resolve_dns_cache_valid(self, mock_socket_class):
-        client = NetworkClient()
-        client.dns_cache["weatherwear.local"] = ("192.168.1.99", time.time())
 
-        ip = client.resolve_dns("weatherwear.local")
+@patch("src.client.client.socket.socket")
+class TestRequests(unittest.TestCase):
 
-        self.assertEqual(ip, "192.168.1.99")
-        mock_socket_class.return_value.sendto.assert_not_called()
-
-    @patch('socket.socket')
-    def test_resolve_dns_cache_expired(self, mock_socket_class):
-        client = NetworkClient()
-        mock_sock = mock_socket_class.return_value
-        mock_sock.recvfrom.return_value = ("RESOLVED:10.0.0.5".encode(ENCODING), ("127.0.0.1", 8053))
-
-        # simulate expired TTL
-        client.dns_cache["weatherwear.local"] = ("192.168.1.99", time.time() - 100)
-
-        ip = client.resolve_dns("weatherwear.local")
-
-        self.assertEqual(ip, "10.0.0.5")
-        mock_sock.sendto.assert_called_once()
-
-    @patch('socket.socket')
-    def test_tcp_send_and_receive(self, mock_socket_class):
-        mock_tcp_sock = MagicMock()
-        mock_socket_class.return_value = mock_tcp_sock
-        mock_tcp_sock.recv.return_value = '{"status": "ok"}'.encode(ENCODING)
-
+    def test_the_protocol_name_selects_the_transport(self, _socket_class):
         client = NetworkClient()
         client.app_server_ip = "127.0.0.1"
 
-        res = client.tcp_send_and_receive('{"action": "FORECAST"}')
+        self.assertIsInstance(client.transport_for("TCP"), TcpTransport)
+        self.assertIsInstance(client.transport_for("RUDP"), RudpTransport)
 
-        self.assertEqual(res, '{"status": "ok"}')
-        mock_tcp_sock.connect.assert_called_once_with(("127.0.0.1", APP_PORT))
-        mock_tcp_sock.sendall.assert_called_once()
-        mock_tcp_sock.close.assert_called_once()
+    def test_a_request_is_handed_to_the_transport(self, _socket_class):
+        client = NetworkClient()
+        client.app_server_ip = "127.0.0.1"
+        transport = MagicMock(**{"request.return_value": "advice"})
+        client.transport_for = MagicMock(return_value=transport)
 
-    @patch('socket.socket')
-    def test_close_teardown(self, mock_socket_class):
-        mock_sock = mock_socket_class.return_value
-        mock_sock.recvfrom.return_value = (b"FIN-ACK", ("127.0.0.1", APP_PORT))
+        self.assertEqual(client.request("{}", "TCP"), "advice")
+        transport.request.assert_called_once_with("{}")
+
+
+@patch("src.client.client.socket.socket")
+class TestTeardown(unittest.TestCase):
+
+    def test_it_says_goodbye_and_gives_the_address_back(self, socket_class):
+        sock = socket_class.return_value
+        sock.recvfrom.return_value = (FIN_ACK_MSG, SERVER)
 
         client = NetworkClient()
         client.app_server_ip = "127.0.0.1"
-        client.my_ip = "192.168.1.50"
-        client.client_socket = mock_sock
+        client.dhcp = MagicMock()
 
         client.close()
 
-        mock_sock.sendto.assert_any_call(b"FIN", ("127.0.0.1", APP_PORT))
+        sock.sendto.assert_any_call(FIN_MSG, SERVER)
+        client.dhcp.release.assert_called_once()
+        sock.close.assert_called_once()
 
-        release_msg = b"DHCP_RELEASE:192.168.1.50"
-        mock_sock.sendto.assert_any_call(release_msg, DHCP_ADD)
-        mock_sock.sendto.assert_any_call(release_msg, DHCP_BACKUP_ADD)
+    def test_a_missing_fin_ack_does_not_stop_the_teardown(self, socket_class):
+        sock = socket_class.return_value
+        sock.recvfrom.side_effect = socket.timeout
 
-        mock_sock.close.assert_called_once()
+        client = NetworkClient()
+        client.app_server_ip = "127.0.0.1"
+        client.dhcp = MagicMock()
+
+        client.close()
+
+        client.dhcp.release.assert_called_once()
+        sock.close.assert_called_once()
+
+    def test_closing_before_connecting_is_harmless(self, socket_class):
+        client = NetworkClient()
+        client.dhcp = MagicMock()
+
+        client.close()
+
+        socket_class.return_value.close.assert_called_once()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
