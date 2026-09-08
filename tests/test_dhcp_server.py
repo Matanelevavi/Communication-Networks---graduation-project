@@ -1,100 +1,172 @@
 import unittest
 from unittest.mock import patch
+
+from src.config import (ACK_MSG, DHCP_BACKUP_PORT, DHCP_PORT, DISCOVER_MSG,
+                        ENCODING, NAK_MSG, OFFER_MSG, RELEASE_MSG, REQUEST_MSG)
+from src.servers.dhcp_backup import DHCPBackupServer
 from src.servers.dhcp_server import DHCPServer
-from src.config import ENCODING, DISCOVER_MSG, OFFER_MSG, REQUEST_MSG, ACK_MSG
 
-class TestDHCPServer(unittest.TestCase):
+CLIENT = ("127.0.0.1", 12345)
 
-    @patch('socket.socket')
-    def test_init_success(self, mock_socket_class):
+
+def datagrams(*messages):
+    """Feed the server a few messages, then interrupt its loop."""
+    return [(m.encode(ENCODING), CLIENT) for m in messages] + [KeyboardInterrupt()]
+
+
+class DHCPServerTestCase(unittest.TestCase):
+    def setUp(self):
+        self.patcher = patch("socket.socket")
+        self.socket_class = self.patcher.start()
+        self.addCleanup(self.patcher.stop)
+        self.sock = self.socket_class.return_value
+
+    def sent_messages(self):
+        return [call[0][0].decode(ENCODING) for call in self.sock.sendto.call_args_list]
+
+
+class TestStartup(DHCPServerTestCase):
+
+    def test_binds_and_fills_its_pool(self):
         server = DHCPServer()
 
-        mock_sock_instance = mock_socket_class.return_value
-        mock_sock_instance.bind.assert_called_once()
-        self.assertGreater(len(server.pool_ip), 0)
+        self.sock.bind.assert_called_once()
+        self.assertGreater(server.pool.available, 0)
 
-    @patch('socket.socket')
-    def test_discover_success(self, mock_socket_class):
-        mock_sock_instance = mock_socket_class.return_value
+    def test_a_busy_port_exits_with_a_message(self):
+        self.sock.bind.side_effect = OSError
 
-        mock_sock_instance.recvfrom.side_effect = [
-            (DISCOVER_MSG.encode(ENCODING), ("127.0.0.1", 12345)),
-            KeyboardInterrupt()
-        ]
+        with self.assertRaises(SystemExit):
+            DHCPServer()
 
-        server = DHCPServer()
-        server.pool_ip = ["192.168.1.100"]
+
+class TestDiscover(DHCPServerTestCase):
+
+    def test_offers_an_address_without_leasing_it(self):
+        self.sock.recvfrom.side_effect = datagrams(DISCOVER_MSG)
+        server = DHCPServer(pool=["192.168.1.100"])
+
         server.start()
 
-        expected_reply = f"{OFFER_MSG}:192.168.1.100".encode(ENCODING)
-        mock_sock_instance.sendto.assert_called_once_with(expected_reply, ("127.0.0.1", 12345))
-        self.assertEqual(server.used_ips[("127.0.0.1", 12345)], "192.168.1.100")
+        self.assertEqual(self.sent_messages(), [f"{OFFER_MSG}:192.168.1.100"])
+        self.assertIn(CLIENT, server.pool.reserved)
+        self.assertNotIn(CLIENT, server.pool.leased)
 
-    @patch('socket.socket')
-    def test_discover_no_ips(self, mock_socket_class):
-        mock_sock_instance = mock_socket_class.return_value
-        mock_sock_instance.recvfrom.side_effect = [
-            (DISCOVER_MSG.encode(ENCODING), ("127.0.0.1", 12345)),
-            KeyboardInterrupt()
-        ]
+    def test_a_repeated_discover_repeats_the_same_offer(self):
+        self.sock.recvfrom.side_effect = datagrams(DISCOVER_MSG, DISCOVER_MSG)
+        server = DHCPServer(pool=["192.168.1.100", "192.168.1.101"])
 
-        server = DHCPServer()
-        server.pool_ip = []
         server.start()
 
-        expected_reply = "DHCP: No IPs available".encode(ENCODING)
-        mock_sock_instance.sendto.assert_called_once_with(expected_reply, ("127.0.0.1", 12345))
+        self.assertEqual(self.sent_messages(),
+                         [f"{OFFER_MSG}:192.168.1.100"] * 2)
+        self.assertEqual(server.pool.available, 1)
 
-    @patch('socket.socket')
-    def test_request_success(self, mock_socket_class):
-        mock_sock_instance = mock_socket_class.return_value
-        msg = f"{REQUEST_MSG}:192.168.1.100".encode(ENCODING)
+    def test_an_empty_pool_is_refused_explicitly(self):
+        self.sock.recvfrom.side_effect = datagrams(DISCOVER_MSG)
+        server = DHCPServer(pool=[])
 
-        mock_sock_instance.recvfrom.side_effect = [
-            (msg, ("127.0.0.1", 12345)),
-            KeyboardInterrupt()
-        ]
-
-        server = DHCPServer()
-        server.used_ips = {("127.0.0.1", 12345): "192.168.1.100"}
         server.start()
 
-        expected_reply = f"{ACK_MSG}:192.168.1.100".encode(ENCODING)
-        mock_sock_instance.sendto.assert_called_once_with(expected_reply, ("127.0.0.1", 12345))
+        self.assertEqual(self.sent_messages(), [f"{NAK_MSG}:No IPs available"])
 
-    @patch('socket.socket')
-    def test_request_invalid_ip(self, mock_socket_class):
-        mock_sock_instance = mock_socket_class.return_value
-        msg = f"{REQUEST_MSG}:192.168.1.999".encode(ENCODING)
 
-        mock_sock_instance.recvfrom.side_effect = [
-            (msg, ("127.0.0.1", 12345)),
-            KeyboardInterrupt()
-        ]
+class TestRequest(DHCPServerTestCase):
 
-        server = DHCPServer()
-        server.used_ips = {("127.0.0.1", 12345): "192.168.1.100"}
+    def test_a_matching_request_is_acknowledged(self):
+        self.sock.recvfrom.side_effect = datagrams(
+            DISCOVER_MSG, f"{REQUEST_MSG}:192.168.1.100:{DHCP_PORT}")
+        server = DHCPServer(pool=["192.168.1.100"])
+
         server.start()
 
-        mock_sock_instance.sendto.assert_not_called()
+        self.assertEqual(self.sent_messages()[-1], f"{ACK_MSG}:192.168.1.100")
+        self.assertEqual(server.pool.leased[CLIENT].ip, "192.168.1.100")
 
-    @patch('socket.socket')
-    def test_dhcp_release(self, mock_socket_class):
-        mock_sock_instance = mock_socket_class.return_value
-        msg = b"DHCP_RELEASE:192.168.1.100"
+    def test_an_unoffered_address_is_refused(self):
+        self.sock.recvfrom.side_effect = datagrams(f"{REQUEST_MSG}:192.168.1.999:{DHCP_PORT}")
 
-        mock_sock_instance.recvfrom.side_effect = [
-            (msg, ("127.0.0.1", 12345)),
-            KeyboardInterrupt()
-        ]
+        DHCPServer().start()
 
-        server = DHCPServer()
-        server.pool_ip = []
-        server.used_ips = {("127.0.0.1", 12345): "192.168.1.100"}
+        self.assertTrue(self.sent_messages()[-1].startswith(NAK_MSG))
+
+    def test_a_request_naming_another_server_frees_the_reservation(self):
+        """
+        This is the fix for the backup pool leaking one address per exchange:
+        the server that was not chosen learns it lost and lets go at once.
+        """
+        self.sock.recvfrom.side_effect = datagrams(
+            DISCOVER_MSG, f"{REQUEST_MSG}:192.168.1.100:{DHCP_PORT}")
+        backup = DHCPBackupServer()
+        backup.offer_delay = 0.0                      # answer immediately, for the test
+        backup.pool.free = ["192.168.2.100"]
+
+        backup.start()
+
+        self.assertEqual(backup.pool.available, 1)
+        self.assertNotIn(CLIENT, backup.pool.reserved)
+        self.assertEqual(self.sent_messages(), [f"{OFFER_MSG}:192.168.2.100"])
+
+    def test_a_malformed_request_is_ignored(self):
+        self.sock.recvfrom.side_effect = datagrams(REQUEST_MSG)
+
+        DHCPServer().start()
+
+        self.sock.sendto.assert_not_called()
+
+
+class TestRelease(DHCPServerTestCase):
+
+    def test_a_leased_address_goes_back_to_the_pool(self):
+        self.sock.recvfrom.side_effect = datagrams(
+            DISCOVER_MSG,
+            f"{REQUEST_MSG}:192.168.1.100:{DHCP_PORT}",
+            f"{RELEASE_MSG}:192.168.1.100")
+        server = DHCPServer(pool=["192.168.1.100"])
+
         server.start()
 
-        self.assertNotIn(("127.0.0.1", 12345), server.used_ips)
-        self.assertIn("192.168.1.100", server.pool_ip)
+        self.assertEqual(server.pool.available, 1)
+        self.assertNotIn(CLIENT, server.pool.leased)
 
-if __name__ == '__main__':
+    def test_releasing_before_requesting_still_frees_the_reservation(self):
+        self.sock.recvfrom.side_effect = datagrams(
+            DISCOVER_MSG, f"{RELEASE_MSG}:192.168.1.100")
+        server = DHCPServer(pool=["192.168.1.100"])
+
+        server.start()
+
+        self.assertEqual(server.pool.available, 1)
+
+
+class TestBackupServer(DHCPServerTestCase):
+
+    def test_it_has_its_own_port_pool_and_delay(self):
+        backup = DHCPBackupServer()
+
+        self.assertEqual(backup.address[1], DHCP_BACKUP_PORT)
+        self.assertTrue(all(ip.startswith("192.168.2.") for ip in backup.pool.free))
+        self.assertGreater(backup.offer_delay, 0)
+
+    @patch("threading.Timer")
+    def test_the_delay_is_scheduled_not_slept(self, timer):
+        """A blocking sleep would queue a second client behind the first."""
+        backup = DHCPBackupServer()
+
+        backup.handle(DISCOVER_MSG, CLIENT)
+
+        timer.assert_called_once()
+        self.sock.sendto.assert_not_called()
+
+    def test_it_does_not_offer_to_a_client_that_already_chose_the_primary(self):
+        backup = DHCPBackupServer()
+        backup.pool.decline(CLIENT)
+
+        backup.send_offer(CLIENT)
+
+        self.sock.sendto.assert_not_called()
+        self.assertEqual(backup.pool.available, len(backup.pool.free))
+
+
+if __name__ == "__main__":
     unittest.main()
