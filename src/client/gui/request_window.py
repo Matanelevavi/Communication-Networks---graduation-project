@@ -7,9 +7,9 @@ from src.client.gui.base import BaseWindow
 from src.client.gui.parsing import parse_profiles
 
 DEFAULT_CITY = "Ariel"
-DEFAULT_PROFILES = ("Dana, Female, Adult, \n"
-                    "Yossi, Male, Adult, \n"
-                    "Noam, Female, Baby, daycare")
+DEFAULT_PROFILES = ("Dana, Adult\n"
+                    "Yossi, Adult\n"
+                    "Noam, Baby, daycare")
 
 
 class RequestWindow(BaseWindow):
@@ -24,13 +24,19 @@ class RequestWindow(BaseWindow):
     min_width = 540
     min_height = 380
 
+    # What the user last submitted. Every request opens a new window, and
+    # without this each one came back with the defaults, so the city and the
+    # family had to be typed again after every single forecast.
+    draft = {"action": "FORECAST", "protocol": "RUDP",
+             "city": DEFAULT_CITY, "profiles": DEFAULT_PROFILES}
+
     def build(self) -> None:
         self.add_header("WeatherWear", "Weather, and what to wear for it")
         # bound to this window explicitly: a StringVar with no master attaches
         # to Tkinter's default root, which is a different window's interpreter
         # once more than one has been created
-        self.action = tk.StringVar(master=self.root, value="FORECAST")
-        self.protocol_choice = tk.StringVar(master=self.root, value="RUDP")
+        self.action = tk.StringVar(master=self.root, value=self.draft["action"])
+        self.protocol_choice = tk.StringVar(master=self.root, value=self.draft["protocol"])
 
         # the footer first, so it keeps its place at the bottom edge
         self.add_footer("Get my forecast", self.submit)
@@ -82,12 +88,12 @@ class RequestWindow(BaseWindow):
                                    highlightbackground=theme.BORDER,
                                    highlightcolor=theme.BRAND, highlightthickness=1,
                                    insertbackground=theme.INK)
-        self.city_entry.insert(0, DEFAULT_CITY)
+        self.city_entry.insert(0, self.draft["city"])
         self.city_entry.pack(fill=tk.X, ipady=4, pady=(3, 9))
 
         tk.Label(inner, text="Who is it for", font=theme.body_bold(), fg=theme.INK,
                  bg=theme.SURFACE, anchor="w").pack(fill=tk.X)
-        tk.Label(inner, text="one per line:  name, gender, age, notes",
+        tk.Label(inner, text="one per line:  name, age (adult / child / baby), notes",
                  font=theme.small(), fg=theme.INK_FAINT, bg=theme.SURFACE,
                  anchor="w").pack(fill=tk.X, pady=(0, 3))
         self.profiles_text = tk.Text(inner, height=3, width=30, font=theme.body(),
@@ -96,7 +102,7 @@ class RequestWindow(BaseWindow):
                                      highlightcolor=theme.BRAND, highlightthickness=1,
                                      insertbackground=theme.INK, padx=6, pady=4,
                                      wrap=tk.WORD)
-        self.profiles_text.insert(tk.END, DEFAULT_PROFILES)
+        self.profiles_text.insert(tk.END, self.draft["profiles"])
         self.profiles_text.pack(fill=tk.X)
 
     # ------------------------------------------------------------- submit
@@ -108,7 +114,10 @@ class RequestWindow(BaseWindow):
             messagebox.showwarning("City needed", "Please enter a city name.")
             return
 
-        self.result = (action, city,
-                       parse_profiles(self.profiles_text.get("1.0", tk.END)),
+        profiles_text = self.profiles_text.get("1.0", "end-1c")
+        RequestWindow.draft = {"action": action, "protocol": self.protocol_choice.get(),
+                               "city": city, "profiles": profiles_text}
+
+        self.result = (action, city, parse_profiles(profiles_text),
                        self.protocol_choice.get())
         self.close()

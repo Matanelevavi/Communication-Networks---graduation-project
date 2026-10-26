@@ -16,6 +16,8 @@ from src.config import MY_DOMAIN, setup_logging
 
 log = logging.getLogger(__name__)
 
+ERROR_PREFIX = "Error:"
+
 NO_ANSWER = ("The server did not answer.\n\n"
              "Check that the App Server is running, then try again.")
 
@@ -45,13 +47,18 @@ def as_forecast(answer) -> dict | None:
     return card if isinstance(card, dict) and card.get("kind") == "forecast" else None
 
 
+def is_error(answer) -> bool:
+    """The server starts every failure with ``Error:``, whatever produced it."""
+    return isinstance(answer, str) and answer.startswith(ERROR_PREFIX)
+
+
 def show_answer(action: str, answer) -> None:
     """Pick the right screen for whatever came back."""
     card = as_forecast(answer)
     if card:
         show_forecast(card)
-    elif isinstance(answer, str) and answer.startswith("Error:"):
-        show_error(answer)
+    elif is_error(answer):
+        show_error(answer[len(ERROR_PREFIX):].strip())
     else:
         show_text("Result", answer)
 
@@ -65,10 +72,12 @@ def handle_archive(client: NetworkClient, listing: str, protocol: str) -> None:
     request = json.dumps({"action": "FTP_GET", "filename": filename})
     content = with_progress(f"Fetching {filename}",
                             lambda: client.request(request, protocol))
-    if content:
-        show_text(filename, content, f"Downloaded over {protocol}")
-    else:
+    if not content:
         show_error(NO_ANSWER)
+    elif is_error(content):
+        show_error(content[len(ERROR_PREFIX):].strip())
+    else:
+        show_text(filename, content, f"Downloaded over {protocol}")
 
 
 def run(client: NetworkClient) -> None:
@@ -88,7 +97,7 @@ def run(client: NetworkClient) -> None:
             show_error(NO_ANSWER)
             continue
 
-        if action == "FTP_LIST":
+        if action == "FTP_LIST" and not is_error(answer):
             handle_archive(client, answer, protocol)
         else:
             show_answer(action, answer)

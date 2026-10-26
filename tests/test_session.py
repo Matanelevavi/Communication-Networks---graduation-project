@@ -106,6 +106,47 @@ class TestSessionLoop(unittest.TestCase):
         self.assertEqual(text.call_args[0][:2], ("Ariel_forecast.json", "file body"))
 
     @patch("src.client.session.show_text")
+    @patch("src.client.session.show_error")
+    @patch("src.client.session.ask_request")
+    def test_a_weather_failure_is_shown_as_an_error_not_a_result(self, ask, error, text):
+        """Messages such as 'City Error: ...' used to land in a plain text window."""
+        ask.side_effect = [("FORECAST", "Atlantis", [], "TCP"), (None, None, None, None)]
+        client = MagicMock(**{"request.return_value": "Error: 'Atlantis' was not found."})
+
+        session.run(client)
+
+        error.assert_called_once_with("'Atlantis' was not found.")
+        text.assert_not_called()
+
+    @patch("src.client.session.show_text")
+    @patch("src.client.session.show_error")
+    @patch("src.client.session.choose_archived_file")
+    @patch("src.client.session.ask_request")
+    def test_a_failed_listing_is_an_error_not_an_empty_archive(self, ask, pick, error, text):
+        ask.side_effect = [("FTP_LIST", "", [], "TCP"), (None, None, None, None)]
+        client = MagicMock(**{"request.return_value": "Error: request too large"})
+
+        session.run(client)
+
+        pick.assert_not_called()
+        error.assert_called_once()
+
+    @patch("src.client.session.show_text")
+    @patch("src.client.session.show_error")
+    @patch("src.client.session.choose_archived_file")
+    @patch("src.client.session.ask_request")
+    def test_a_missing_file_is_an_error(self, ask, pick, error, text):
+        ask.side_effect = [("FTP_LIST", "", [], "RUDP"), (None, None, None, None)]
+        pick.return_value = "gone.json"
+        client = MagicMock(**{"request.side_effect": [
+            "- listing", "Error: The file 'gone.json' does not exist in the archive."]})
+
+        session.run(client)
+
+        error.assert_called_once()
+        text.assert_not_called()
+
+    @patch("src.client.session.show_text")
     @patch("src.client.session.choose_archived_file")
     @patch("src.client.session.ask_request")
     def test_closing_the_archive_without_choosing_fetches_nothing(self, ask, pick, text):

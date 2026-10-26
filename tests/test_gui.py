@@ -12,20 +12,33 @@ from src.client.gui.parsing import parse_listing, parse_profiles, readable
 class TestProfileParsing(unittest.TestCase):
 
     def test_one_profile_per_line(self):
-        profiles = parse_profiles("Dana, Female, Adult, runner\nAvi, Male, Baby, ")
+        profiles = parse_profiles("Dana, Adult, runner\nAvi, Baby, ")
 
         self.assertEqual(len(profiles), 2)
-        self.assertEqual(profiles[0], {"name": "Dana", "gender": "Female",
-                                       "age_category": "Adult", "notes": "runner"})
+        self.assertEqual(profiles[0], {"name": "Dana", "age_category": "Adult",
+                                       "notes": "runner"})
 
     def test_notes_are_optional(self):
-        self.assertEqual(parse_profiles("Dana, Female, Adult")[0]["notes"], "")
+        self.assertEqual(parse_profiles("Dana, Adult")[0]["notes"], "")
 
-    def test_incomplete_lines_are_skipped(self):
-        self.assertEqual(parse_profiles("Dana, Female\n\n   \n"), [])
+    def test_a_name_alone_is_enough(self):
+        """A line with fewer than three fields used to vanish without a word."""
+        self.assertEqual(parse_profiles("Dana"),
+                         [{"name": "Dana", "age_category": "", "notes": ""}])
+
+    def test_a_note_may_contain_a_comma(self):
+        self.assertEqual(parse_profiles("Noam, Baby, daycare, then grandma")[0]["notes"],
+                         "daycare, then grandma")
+
+    def test_blank_lines_are_skipped(self):
+        self.assertEqual(parse_profiles("\n\n   \n , Adult"), [])
+
+    def test_hebrew_is_kept_as_typed(self):
+        self.assertEqual(parse_profiles("נועם, תינוק")[0],
+                         {"name": "נועם", "age_category": "תינוק", "notes": ""})
 
     def test_surrounding_spaces_are_trimmed(self):
-        self.assertEqual(parse_profiles("  Dana ,  Female , Adult ")[0]["name"], "Dana")
+        self.assertEqual(parse_profiles("  Dana ,  Adult ")[0]["name"], "Dana")
 
 
 class TestListingParsing(unittest.TestCase):

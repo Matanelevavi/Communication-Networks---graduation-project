@@ -19,19 +19,23 @@ def first_hour(rain_summary: str) -> str:
 
 
 def parse_profiles(raw: str) -> list[dict]:
-    """Read the free text box as one profile per comma separated line."""
+    """
+    Read the free text box as one ``name, age, notes`` line per person.
+
+    Only the name is required: a line used to be dropped without a word unless
+    it had three fields. Anything after the age is part of the notes, so a
+    note may itself contain a comma.
+    """
     profiles = []
     for line in raw.strip().split("\n"):
-        if not line.strip():
+        parts = [part.strip() for part in line.split(",", 2)]
+        if not parts[0]:
             continue
-        parts = [part.strip() for part in line.split(",")]
-        if len(parts) >= 3:
-            profiles.append({
-                "name": parts[0],
-                "gender": parts[1],
-                "age_category": parts[2],
-                "notes": parts[3] if len(parts) > 3 else "",
-            })
+        profiles.append({
+            "name": parts[0],
+            "age_category": parts[1] if len(parts) > 1 else "",
+            "notes": parts[2] if len(parts) > 2 else "",
+        })
     return profiles
 
 
