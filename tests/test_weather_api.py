@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import requests
 
 from src.servers.app_server.external_service import ServiceError
-from src.servers.app_server.weather_api import Place, WeatherService
+from src.servers.app_server.weather_api import Forecast, Place, WeatherService
 
 GEOCODED = {"results": [{"latitude": 32.0, "longitude": 34.7, "name": "Tel Aviv"}]}
 HOURLY = {
@@ -14,25 +14,34 @@ HOURLY = {
 }
 
 
-def response(payload):
+def response(payload, status=200):
     mock = MagicMock()
     mock.json.return_value = payload
+    mock.status_code = status
+    mock.ok = status < 400
     return mock
 
 
-class TestInputValidation(unittest.TestCase):
+@patch("src.servers.app_server.weather_api.requests.get")
+class TestLanguage(unittest.TestCase):
+    """The users are in Israel, and Hebrew used to be refused outright."""
 
-    def test_english_is_accepted(self):
-        self.assertTrue(WeatherService.is_english_only("Tel Aviv"))
-        self.assertTrue(WeatherService.is_english_only("Ariel 40"))
+    def test_a_hebrew_city_is_looked_up_in_hebrew(self, get):
+        get.side_effect = [response({"results": [{"latitude": 32.1, "longitude": 35.1,
+                                                  "name": "אריאל"}]}),
+                           response(HOURLY)]
 
-    @patch("src.servers.app_server.weather_api.requests.get")
-    def test_hebrew_never_reaches_the_network(self, get):
-        with self.assertRaises(ServiceError) as caught:
-            WeatherService().fetch("אריאל")
+        forecast = WeatherService().fetch("אריאל")
 
-        self.assertIn("Input Error", str(caught.exception))
-        get.assert_not_called()
+        self.assertEqual(forecast.place.name, "אריאל")
+        self.assertEqual(get.call_args_list[0][1]["params"]["language"], "he")
+
+    def test_an_english_city_is_looked_up_in_english(self, get):
+        get.side_effect = [response(GEOCODED), response(HOURLY)]
+
+        WeatherService().fetch("Tel Aviv")
+
+        self.assertEqual(get.call_args_list[0][1]["params"]["language"], "en")
 
 
 @patch("src.servers.app_server.weather_api.requests.get")
@@ -84,7 +93,7 @@ class TestFetch(unittest.TestCase):
         with self.assertRaises(ServiceError) as caught:
             WeatherService().fetch("Tel Aviv")
 
-        self.assertIn("Data Error", str(caught.exception))
+        self.assertIn("No forecast is available", str(caught.exception))
 
     def test_an_unreachable_service(self, get):
         get.side_effect = requests.RequestException("no route to host")
@@ -92,7 +101,39 @@ class TestFetch(unittest.TestCase):
         with self.assertRaises(ServiceError) as caught:
             WeatherService().fetch("Ariel")
 
-        self.assertIn("Connection Error", str(caught.exception))
+        self.assertIn("Could not reach", str(caught.exception))
+
+    def test_an_http_error_is_not_mistaken_for_an_unknown_city(self, get):
+        """Open-Meteo answers a bad request with JSON, so the status must be read."""
+        get.return_value = response({"error": True, "reason": "bad"}, status=500)
+
+        with self.assertRaises(ServiceError) as caught:
+            WeatherService().fetch("Ariel")
+
+        self.assertIn("unavailable", str(caught.exception))
+        self.assertNotIn("not found", str(caught.exception))
+
+    def test_the_hours_start_now_in_the_citys_time_zone(self, get):
+        """A calendar day used to report rain that had already fallen."""
+        get.side_effect = [response(GEOCODED), response(HOURLY)]
+
+        WeatherService().fetch("Tel Aviv")
+
+        params = get.call_args_list[1][1]["params"]
+        self.assertEqual(params["forecast_hours"], 24)
+        self.assertEqual(params["timezone"], "auto")
+
+
+class TestForecastData(unittest.TestCase):
+
+    def test_a_forecast_survives_a_round_trip_through_the_cache(self):
+        forecast = Forecast(Place("Ariel", 32.1, 35.1), 18, 30, 25, "No rain expected")
+
+        self.assertEqual(Forecast.from_dict(forecast.to_dict()), forecast)
+
+    def test_an_incomplete_entry_raises(self):
+        with self.assertRaises(KeyError):
+            Forecast.from_dict({"city": "Ariel"})
 
 
 @patch("src.servers.app_server.weather_api.requests.get")
@@ -105,6 +146,16 @@ class TestCsvReport(unittest.TestCase):
         report = WeatherService().download_csv_report(Place("Ariel", 32.0, 34.0))
 
         self.assertEqual(report, b"time,temperature_2m\n2026-03-04T12:00,20.5")
+
+    def test_the_report_uses_the_same_hours_as_the_forecast(self, get):
+        """It used to be in GMT while the summary on screen was in local time."""
+        get.return_value.status_code = 200
+
+        WeatherService().download_csv_report(Place("Ariel", 32.0, 34.0))
+
+        params = get.call_args[1]["params"]
+        self.assertEqual(params["timezone"], "auto")
+        self.assertEqual(params["forecast_hours"], 24)
 
     def test_a_rejected_download_returns_nothing(self, get):
         get.return_value.status_code = 404

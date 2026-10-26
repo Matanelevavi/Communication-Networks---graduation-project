@@ -4,6 +4,12 @@ Open-Meteo client.
 Two calls make a forecast: geocoding turns a city name into coordinates, and
 the forecast endpoint returns the next 24 hours for them.  A third call fetches
 the same data as CSV for the archive.
+
+Both forecast requests ask for ``forecast_hours`` rather than a calendar day,
+so the 24 hours start at the current hour: a forecast fetched in the evening
+does not warn about rain that fell that morning.  Both also ask for the city's
+own time zone, so the CSV in the archive and the summary on screen name the
+same hours.
 """
 import logging
 from dataclasses import dataclass
@@ -39,32 +45,56 @@ class Forecast:
     current_temp: float | None
     rain_summary: str
 
+    def to_dict(self) -> dict:
+        """The forecast as plain data, which is what the cache stores."""
+        return {
+            "city": self.place.name,
+            "latitude": self.place.latitude,
+            "longitude": self.place.longitude,
+            "min_temp": self.min_temp,
+            "max_temp": self.max_temp,
+            "current_temp": self.current_temp,
+            "rain": self.rain_summary,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Forecast":
+        """Rebuild a forecast from :meth:`to_dict`.  Raises KeyError if incomplete."""
+        return cls(
+            place=Place(data["city"], data["latitude"], data["longitude"]),
+            min_temp=data["min_temp"],
+            max_temp=data["max_temp"],
+            current_temp=data.get("current_temp"),
+            rain_summary=data["rain"],
+        )
+
 
 class WeatherService(ExternalService):
     """Fetches forecasts from Open-Meteo."""
 
     def fetch(self, city_name: str) -> Forecast:
         """Resolve a city and return its forecast.  Raises :class:`ServiceError`."""
-        self.require_english(city_name, "the city name")
         place = self._geocode(city_name)
         return self._forecast(place)
 
     def _geocode(self, city_name: str) -> Place:
         # Parameters go to requests rather than into an f-string, so a name
-        # such as "Tel Aviv" is percent encoded correctly.
+        # such as "Tel Aviv" is percent encoded correctly.  A Hebrew query is
+        # answered with the Hebrew name, so the card shows what the user typed.
         payload = self._get(GEOCODING_URL, {
-            "name": city_name, "count": 1, "language": "en", "format": "json",
+            "name": city_name, "count": 1, "format": "json",
+            "language": "en" if self.is_english_only(city_name) else "he",
         })
 
         results = payload.get("results")
         if not results:
-            raise ServiceError(f"City Error: '{city_name}' was not found.")
+            raise ServiceError(f"'{city_name}' was not found.")
 
         first = results[0]
         try:
             return Place(first.get("name", city_name), first["latitude"], first["longitude"])
         except (KeyError, TypeError) as e:
-            raise ServiceError("Data Error: the geocoding service returned "
+            raise ServiceError("The geocoding service returned "
                                "an unexpected answer.") from e
 
     def _forecast(self, place: Place) -> Forecast:
@@ -73,13 +103,14 @@ class WeatherService(ExternalService):
             "longitude": place.longitude,
             "current_weather": "true",
             "hourly": "temperature_2m,precipitation_probability",
+            "forecast_hours": FORECAST_HOURS,
             "timezone": "auto",
         })
 
         hourly = payload.get("hourly", {})
         temps = [t for t in hourly.get("temperature_2m", [])[:FORECAST_HOURS] if t is not None]
         if not temps:
-            raise ServiceError(f"Data Error: no forecast is available for '{place.name}'.")
+            raise ServiceError(f"No forecast is available for '{place.name}'.")
 
         return Forecast(
             place=place,
@@ -110,6 +141,8 @@ class WeatherService(ExternalService):
                 "latitude": place.latitude,
                 "longitude": place.longitude,
                 "hourly": "temperature_2m,precipitation_probability",
+                "forecast_hours": FORECAST_HOURS,
+                "timezone": "auto",
                 "format": "csv",
             })
         except requests.RequestException as e:
@@ -126,13 +159,23 @@ class WeatherService(ExternalService):
     # --------------------------------------------------------------- shared
     @staticmethod
     def _get(url: str, params: dict) -> dict:
-        """One GET returning JSON, with network failures turned into ServiceError."""
+        """One GET returning JSON, with every failure turned into ServiceError."""
         try:
-            return requests.get(url, params=params, timeout=HTTP_TIMEOUT).json()
+            response = requests.get(url, params=params, timeout=HTTP_TIMEOUT)
         except requests.RequestException as e:
             log.error(f"Weather service unreachable: {e}")
-            raise ServiceError("Connection Error: Failed to reach weather service.") from e
+            raise ServiceError("Could not reach the weather service.") from e
+
+        # Checked before the body is read: Open-Meteo answers a bad request
+        # with a JSON error object, which would otherwise read as "not found".
+        if not response.ok:
+            log.error(f"Weather service answered HTTP {response.status_code}")
+            raise ServiceError("The weather service is unavailable right now, "
+                               "please try again shortly.")
+
+        try:
+            return response.json()
         except ValueError as e:
             log.error(f"Weather service returned invalid JSON: {e}")
-            raise ServiceError("Data Error: the weather service returned "
+            raise ServiceError("The weather service returned "
                                "an unexpected answer.") from e

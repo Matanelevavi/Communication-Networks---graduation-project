@@ -23,6 +23,10 @@ BANDS = (
 BIG_SWING = 10          # degrees between low and high that call for a layer
 STRONG_SUN = 27         # above this, sun protection is worth mentioning
 
+# How the age of a person may be written, in English or in Hebrew.
+BABY_WORDS = {"baby", "infant", "toddler", "תינוק", "תינוקת", "פעוט", "פעוטה"}
+CHILD_WORDS = {"child", "kid", "ילד", "ילדה"}
+
 
 class LocalAdvisor:
     """Builds a recommendation paragraph from the numbers in a forecast."""
@@ -91,12 +95,12 @@ class LocalAdvisor:
         age = str(profile.get("age_category", "")).strip().lower()
         extra = str(profile.get("notes", "")).strip()
 
-        if age == "baby":
+        if age in BABY_WORDS:
             advice = (f"For {name}, add one more layer than you would wear yourself, "
                       f"and keep the pram out of direct sun."
                       if forecast.max_temp >= STRONG_SUN else
                       f"For {name}, add one more layer than you would wear yourself.")
-        elif age in ("child", "kid"):
+        elif age in CHILD_WORDS:
             advice = (f"{name} will be moving about, so something light "
                       f"underneath a layer that comes off easily works best.")
         else:

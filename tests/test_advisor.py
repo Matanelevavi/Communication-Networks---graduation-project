@@ -14,9 +14,9 @@ def forecast(low=18.0, high=24.0, now=21.0, rain="No rain expected"):
                     current_temp=now, rain_summary=rain)
 
 
-ADULT = {"name": "Dana", "gender": "Female", "age_category": "Adult", "notes": ""}
-BABY = {"name": "Noam", "gender": "Male", "age_category": "Baby", "notes": "daycare"}
-CHILD = {"name": "Yossi", "gender": "Male", "age_category": "Child", "notes": ""}
+ADULT = {"name": "Dana", "age_category": "Adult", "notes": ""}
+BABY = {"name": "Noam", "age_category": "Baby", "notes": "daycare"}
+CHILD = {"name": "Yossi", "age_category": "Child", "notes": ""}
 
 
 class TestLocalAdvisor(unittest.TestCase):
@@ -77,6 +77,13 @@ class TestLocalAdvisor(unittest.TestCase):
 
         self.assertIn("Yossi", child)
         self.assertNotEqual(child, baby)
+
+    def test_an_age_written_in_hebrew_is_understood(self):
+        baby = self.advisor.recommend(forecast(), [{"name": "נועם", "age_category": "תינוק"}])
+        child = self.advisor.recommend(forecast(), [{"name": "יוסי", "age_category": "ילד"}])
+
+        self.assertIn("one more layer", baby)
+        self.assertIn("יוסי", child)
 
     def test_it_copes_with_no_profiles_at_all(self):
         for profiles in ([], None, ["not a dict"]):
