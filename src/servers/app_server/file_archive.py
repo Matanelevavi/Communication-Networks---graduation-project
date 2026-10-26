@@ -64,15 +64,17 @@ class FileArchive:
         """
         Render a stored forecast card as a report.
 
-        The cache keeps the answer as data so the client can lay it out; the
-        archive is read by a person, so it gets prose and aligned labels.
+        The cache keeps the forecast as data; the archive is read by a person,
+        so it gets aligned labels. It holds the weather only: the clothing
+        advice names somebody's family, and the archive is open to everyone.
         """
         try:
             card = json.loads(content)
         except ValueError:
             return content
+        if not isinstance(card, dict):
+            return content
 
-        source = "AI advisor" if card.get("source") == "ai" else "local advisor"
         rows = [
             f"Forecast for {card.get('city', 'unknown')}",
             "=" * TABLE_WIDTH,
@@ -80,12 +82,6 @@ class FileArchive:
             f"{'High':<12}{card.get('max_temp', '?')}°C",
             f"{'Now':<12}{card.get('current_temp', '?')}°C",
             f"{'Rain':<12}{card.get('rain', 'unknown')}",
-            "-" * TABLE_WIDTH,
-            "What to wear:",
-            "",
-            card.get("advice", ""),
-            "",
-            f"(written by the {source})",
         ]
         log.info(f"Rendered the stored forecast in {filename}")
         return "\n".join(rows) + "\n"

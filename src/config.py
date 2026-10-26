@@ -95,6 +95,16 @@ TCP_TIMEOUT = 20.0
 MAX_REQUEST_SIZE = 64 * 1024        # largest request accepted from a client
 MAX_RESPONSE_SIZE = 512 * 1024      # largest payload one RUDP transfer may carry
 
+# How long a fetched forecast is reused. Long enough that a burst of requests
+# for one city costs one call to Open-Meteo, short enough that "right now"
+# still means now.
+FORECAST_CACHE_TTL = 30 * 60
+
+# Limits on the family description a client may send. It is copied into a
+# prompt and into the advice, so it is bounded like any other untrusted input.
+MAX_PROFILES = 10
+MAX_PROFILE_FIELD = 40
+
 # ------------------------------------------------------------- api config ---
 # The Gemini key is optional. Without one the app still produces a real,
 # personalised forecast from live weather data; a key only upgrades the wording

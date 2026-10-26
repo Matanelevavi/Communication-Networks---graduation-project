@@ -4,13 +4,15 @@ import shutil
 import time
 import unittest
 
+from src.config import FORECAST_CACHE_TTL
 from src.servers.app_server.agent import FileAgent
 from src.servers.app_server.file_archive import BANNER, EMPTY
+from src.servers.app_server.forecast_cache import city_key
 
-CARD = {
-    "kind": "forecast", "city": "Ariel", "min_temp": 19.9, "max_temp": 33.3,
-    "current_temp": 22.6, "rain": "No rain expected",
-    "advice": "Ariel is hot today, go with light clothes.", "source": "local",
+FORECAST = {
+    "city": "Ariel", "latitude": 32.1, "longitude": 35.1,
+    "min_temp": 19.9, "max_temp": 33.3, "current_temp": 22.6,
+    "rain": "No rain expected",
 }
 
 
@@ -29,33 +31,71 @@ class AgentTestCase(unittest.TestCase):
             f.write(data)
         return path
 
+    def age(self, name, seconds):
+        path = os.path.join(self.folder, name)
+        then = time.time() - seconds
+        os.utime(path, (then, then))
+
+
+class TestCityKey(unittest.TestCase):
+
+    def test_case_and_spacing_share_one_entry(self):
+        """'ariel' and 'Ariel' used to be cached, and fetched, separately."""
+        self.assertEqual(city_key("Ariel"), city_key("  ariel "))
+        self.assertEqual(city_key("Tel Aviv"), city_key("TEL   aviv"))
+
+    def test_a_name_can_never_form_a_path(self):
+        for name in ("../../etc/passwd", "a/b\\c", "..", "C:\\x"):
+            key = city_key(name)
+            self.assertNotIn("/", key)
+            self.assertNotIn("\\", key)
+            self.assertNotIn("..", key)
+
+    def test_hebrew_is_kept(self):
+        self.assertEqual(city_key("תל אביב"), "תל_אביב")
+
 
 class TestCache(AgentTestCase):
 
-    def test_a_card_stored_today_comes_back_whole(self):
-        self.agent.store_forecast("Ariel", CARD)
+    def test_a_recent_forecast_comes_back_whole(self):
+        self.agent.store_forecast("Ariel", FORECAST)
 
-        self.assertEqual(self.agent.cached_forecast("Ariel"), CARD)
+        self.assertEqual(self.agent.cached_forecast("Ariel"), FORECAST)
+
+    def test_another_spelling_of_the_same_city_hits(self):
+        self.agent.store_forecast("Ariel", FORECAST)
+
+        self.assertEqual(self.agent.cached_forecast(" ARIEL "), FORECAST)
 
     def test_it_is_stored_as_readable_json(self):
-        self.agent.store_forecast("Ariel", CARD)
+        self.agent.store_forecast("Ariel", FORECAST)
 
-        with open(os.path.join(self.folder, "Ariel_forecast.json"), encoding="utf-8") as f:
-            self.assertEqual(json.load(f), CARD)
+        with open(os.path.join(self.folder, "ariel_forecast.json"), encoding="utf-8") as f:
+            self.assertEqual(json.load(f), FORECAST)
 
     def test_an_unknown_city_is_a_miss(self):
         self.assertIsNone(self.agent.cached_forecast("Atlantis"))
 
-    def test_yesterdays_file_is_stale(self):
-        self.agent.store_forecast("Ariel", CARD)
-        path = os.path.join(self.folder, "Ariel_forecast.json")
-        yesterday = time.time() - 24 * 3600
-        os.utime(path, (yesterday, yesterday))
+    def test_a_forecast_older_than_the_ttl_is_stale(self):
+        """A whole day used to count, so "right now" stayed frozen at the morning."""
+        self.agent.store_forecast("Ariel", FORECAST)
+        self.age("ariel_forecast.json", FORECAST_CACHE_TTL + 60)
 
         self.assertIsNone(self.agent.cached_forecast("Ariel"))
 
+    def test_a_forecast_inside_the_ttl_is_fresh(self):
+        self.agent.store_forecast("Ariel", FORECAST)
+        self.age("ariel_forecast.json", FORECAST_CACHE_TTL / 2)
+
+        self.assertEqual(self.agent.cached_forecast("Ariel"), FORECAST)
+
     def test_a_corrupted_entry_is_discarded_rather_than_served(self):
-        self.write("Ariel_forecast.json", b"{not json")
+        self.write("ariel_forecast.json", b"{not json")
+
+        self.assertIsNone(self.agent.cached_forecast("Ariel"))
+
+    def test_json_that_is_not_an_object_is_discarded(self):
+        self.write("ariel_forecast.json", b"[1, 2, 3]")
 
         self.assertIsNone(self.agent.cached_forecast("Ariel"))
 
@@ -91,22 +131,15 @@ class TestArchive(AgentTestCase):
                          b"\x89PNG\r\n\x1a\n\xff\xfe")
 
     def test_a_stored_forecast_is_rendered_as_a_report(self):
-        """The cache holds data; a person reading the archive wants prose."""
-        self.agent.store_forecast("Ariel", CARD)
+        """The cache holds data; a person reading the archive wants labels."""
+        self.agent.store_forecast("Ariel", FORECAST)
 
-        report = self.agent.archived_file("Ariel_forecast.json")
+        report = self.agent.archived_file("ariel_forecast.json")
 
         self.assertIn("Forecast for Ariel", report)
         self.assertIn("19.9", report)
-        self.assertIn("What to wear", report)
-        self.assertIn("light clothes", report)
-        self.assertIn("local advisor", report)
+        self.assertIn("No rain expected", report)
         self.assertNotIn("min_temp", report)      # not the raw JSON
-
-    def test_an_ai_written_forecast_says_so(self):
-        self.agent.store_forecast("Ariel", {**CARD, "source": "ai"})
-
-        self.assertIn("AI advisor", self.agent.archived_file("Ariel_forecast.json"))
 
     def test_unreadable_json_is_returned_as_it_is(self):
         self.write("broken.json", b"{not json")
@@ -118,7 +151,7 @@ class TestArchive(AgentTestCase):
                                          b"time,temperature_2m,precipitation_probability\n"
                                          b"2026-09-01T00:00,19.9,0\n")
 
-        table = self.agent.archived_file("Ariel_full_report.csv")
+        table = self.agent.archived_file("ariel_full_report.csv")
 
         self.assertIn("Date & Time", table)
         self.assertIn("2026-09-01  00:00", table)

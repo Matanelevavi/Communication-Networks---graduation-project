@@ -121,7 +121,7 @@ src/servers/
   app_server/local_advisor.py         advice from the forecast, no key needed
   app_server/external_service.py      shared validation and error type
   app_server/agent.py                 FileAgent: the cache and the archive
-  app_server/forecast_cache.py        one forecast per city per day
+  app_server/forecast_cache.py        recent weather per city, never the advice
   app_server/file_archive.py          list, read, render a CSV as a table
   app_server/storage.py               guarded access to the data directory
 
@@ -237,19 +237,31 @@ assumed. They skip where there is no display.
 FORECAST request
       |
       v
-  daily cache ---- hit ----> the stored card, marked cached
-      |
-     miss
+  weather cache (30 min) ---- hit ----> the stored weather, marked cached
+      |                                         |
+     miss                                       |
+      v                                         |
+  Open-Meteo: geocode the city, then the next   |
+  24 hours from now, in the city's time zone    |
+      |                                         |
+  store the weather and the raw CSV             |
+      |                                         |
+      +-----------------------------------------+
       v
-  Open-Meteo: geocode the city, then 24 hours of temperature and rain
-      |
-      v
-  ClothingAdvisor
+  ClothingAdvisor, for the family in *this* request
       |-- a key is set?  -> Gemini writes the paragraph        (source: ai)
       |-- no key, or the call fails -> LocalAdvisor writes it  (source: local)
       v
-  store the card and the raw CSV, answer with the card
+  answer with the card
 ```
+
+Only the weather is cached and archived. The advice names the people it was
+written for, so it is written again for every request and never stored: the
+archive is readable by every client.
+
+City names may be typed in English or in Hebrew, and so may the family. Each
+line is `name, age, notes`, where only the name is required and the age is
+`adult`, `child` or `baby` (or `מבוגר`, `ילד`, `תינוק`).
 
 The answer is a JSON object rather than prose, so the client lays the numbers
 out itself instead of parsing sentences:

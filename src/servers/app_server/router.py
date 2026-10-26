@@ -6,11 +6,14 @@ That is what lets the same code serve a TCP connection and an RUDP transfer:
 both listeners hand a dictionary here and send back whatever comes out.
 
 A forecast answer is a JSON object rather than a paragraph, so the client can
-lay the numbers out itself instead of parsing prose.
+lay the numbers out itself instead of parsing prose. Every failure is a plain
+string that starts with ``Error:``, so the client has one rule for telling an
+error from a result.
 """
 import json
 import logging
 
+from src.config import MAX_PROFILE_FIELD, MAX_PROFILES
 from src.servers.app_server.advisor import ClothingAdvisor
 from src.servers.app_server.agent import FileAgent
 from src.servers.app_server.external_service import ServiceError
@@ -18,8 +21,32 @@ from src.servers.app_server.weather_api import Forecast, WeatherService
 
 log = logging.getLogger(__name__)
 
+ERROR_PREFIX = "Error: "
 UNKNOWN_ACTION = "Error: Unknown action requested."
 FORECAST_KIND = "forecast"
+PROFILE_FIELDS = ("name", "age_category", "notes")
+
+
+def clean_profiles(raw) -> list[dict]:
+    """
+    The family description, reduced to known fields of bounded length.
+
+    It arrives from the network and ends up in an AI prompt, so it is treated
+    like any other untrusted input: unknown keys are dropped, every value
+    becomes a short single line string, and only so many people are kept.
+    """
+    if not isinstance(raw, list):
+        return []
+
+    profiles = []
+    for entry in raw[:MAX_PROFILES]:
+        if not isinstance(entry, dict):
+            continue
+        profile = {field: " ".join(str(entry.get(field) or "").split())[:MAX_PROFILE_FIELD]
+                   for field in PROFILE_FIELDS}
+        if profile["name"]:
+            profiles.append(profile)
+    return profiles
 
 
 class RequestRouter:
@@ -43,6 +70,9 @@ class RequestRouter:
 
     def handle(self, request: dict) -> str | bytes:
         """Route one request.  Never raises: a failure comes back as a message."""
+        if not isinstance(request, dict):
+            return f"{ERROR_PREFIX}a request must be a JSON object."
+
         action = request.get("action", "FORECAST")
         handler = self.actions.get(action)
         if handler is None:
@@ -53,29 +83,34 @@ class RequestRouter:
         except ServiceError as e:
             # An expected, explainable failure: show it, but never cache it.
             log.warning(f"{action} failed: {e}")
-            return str(e)
+            return f"{ERROR_PREFIX}{e}"
 
     # ------------------------------------------------------------ forecast
     def forecast(self, request: dict) -> str:
-        city = str(request.get("city") or "").strip()
+        city = " ".join(str(request.get("city") or "").split())
         if not city:
-            return "Error: FORECAST requires a city name."
+            return f"{ERROR_PREFIX}FORECAST requires a city name."
 
-        safe_city = city.replace(" ", "_")
+        forecast, cached = self._weather_for(city)
+        advice = self.advisor.recommend(forecast, clean_profiles(request.get("profiles")))
+        return json.dumps({**self.build_card(forecast, advice), "cached": cached},
+                          ensure_ascii=False)
 
-        cached = self.agent.cached_forecast(safe_city)
-        if cached:
-            return json.dumps({**cached, "cached": True})
+    def _weather_for(self, city: str) -> tuple[Forecast, bool]:
+        """The forecast for a city, from the cache when it is recent enough."""
+        stored = self.agent.cached_forecast(city)
+        if stored:
+            try:
+                return Forecast.from_dict(stored), True
+            except (KeyError, TypeError):
+                log.warning(f"Cache entry for '{city}' is incomplete, refetching")
 
         forecast = self.weather.fetch(city)
-        advice = self.advisor.recommend(forecast, request.get("profiles"))
-        card = self.build_card(forecast, advice)
-
-        # Only reached when the weather lookup succeeded and an advisor
-        # produced something, so nothing but a real answer is written to disk.
-        self.agent.store_forecast(safe_city, card)
-        self._archive_report(safe_city, forecast)
-        return json.dumps({**card, "cached": False})
+        # Only reached when the lookup succeeded, so nothing but real weather
+        # is written to disk, and never the advice, which is per family.
+        self.agent.store_forecast(city, forecast.to_dict())
+        self._archive_report(city, forecast)
+        return forecast, False
 
     @staticmethod
     def build_card(forecast: Forecast, advice) -> dict:
@@ -91,17 +126,17 @@ class RequestRouter:
             "source": advice.source,
         }
 
-    def _archive_report(self, safe_city: str, forecast: Forecast) -> None:
+    def _archive_report(self, city: str, forecast: Forecast) -> None:
         csv_bytes = self.weather.download_csv_report(forecast.place)
         if csv_bytes:
-            self.agent.store_report(safe_city, csv_bytes)
+            self.agent.store_report(city, csv_bytes)
 
     # ----------------------------------------------------------------- ftp
     def list_archive(self, _request: dict) -> str:
         return self.agent.archive_listing()
 
     def read_archived_file(self, request: dict) -> str | bytes:
-        filename = request.get("filename", "")
+        filename = str(request.get("filename") or "")
         if not filename:
-            return "Error: FTP_GET requires a filename."
+            return f"{ERROR_PREFIX}FTP_GET requires a filename."
         return self.agent.archived_file(filename)
