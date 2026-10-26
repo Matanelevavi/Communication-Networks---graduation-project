@@ -4,7 +4,15 @@ Turning what the user typed, and what the server sent, into plain data.
 Kept away from the widgets so it can be tested without a display.
 """
 
+import re
+
 SIZE_MARKER = " (Size:"
+HEBREW_LETTERS = re.compile(r"[֐-׿]")
+
+
+def is_rtl(text) -> bool:
+    """True for text written in Hebrew, which reads and aligns right to left."""
+    return isinstance(text, str) and bool(HEBREW_LETTERS.search(text))
 
 
 def degrees(value) -> str:

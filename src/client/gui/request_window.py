@@ -4,7 +4,7 @@ from tkinter import messagebox
 
 from src.client.gui import theme
 from src.client.gui.base import BaseWindow
-from src.client.gui.parsing import parse_profiles
+from src.client.gui.parsing import is_rtl, parse_profiles
 
 DEFAULT_CITY = "Ariel"
 DEFAULT_PROFILES = ("Dana, Adult\n"
@@ -89,6 +89,7 @@ class RequestWindow(BaseWindow):
                                    highlightcolor=theme.BRAND, highlightthickness=1,
                                    insertbackground=theme.INK)
         self.city_entry.insert(0, self.draft["city"])
+        self._align_as_typed(self.city_entry)
         self.city_entry.pack(fill=tk.X, ipady=4, pady=(3, 9))
 
         tk.Label(inner, text="Who is it for", font=theme.body_bold(), fg=theme.INK,
@@ -104,6 +105,15 @@ class RequestWindow(BaseWindow):
                                      wrap=tk.WORD)
         self.profiles_text.insert(tk.END, self.draft["profiles"])
         self.profiles_text.pack(fill=tk.X)
+
+    @staticmethod
+    def _align_as_typed(entry: tk.Entry) -> None:
+        """Keep a Hebrew city name against the right edge, as Hebrew is read."""
+        def realign(_event=None):
+            entry.configure(justify=tk.RIGHT if is_rtl(entry.get()) else tk.LEFT)
+
+        entry.bind("<KeyRelease>", realign)
+        realign()
 
     # ------------------------------------------------------------- submit
     def submit(self) -> None:

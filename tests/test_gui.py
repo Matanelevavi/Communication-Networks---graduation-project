@@ -6,7 +6,18 @@ data handling and is tested here.
 """
 import unittest
 
-from src.client.gui.parsing import parse_listing, parse_profiles, readable
+from src.client.gui.parsing import is_rtl, parse_listing, parse_profiles, readable
+
+
+class TestDirection(unittest.TestCase):
+
+    def test_hebrew_reads_right_to_left(self):
+        self.assertTrue(is_rtl("אריאל"))
+        self.assertTrue(is_rtl("ב-Ariel חם היום"))
+
+    def test_english_and_non_text_do_not(self):
+        for value in ("Ariel", "", None, b"\xd7\x90"):
+            self.assertFalse(is_rtl(value))
 
 
 class TestProfileParsing(unittest.TestCase):

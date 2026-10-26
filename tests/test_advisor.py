@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import MagicMock
 
+from src.client.gui.parsing import is_rtl
 from src.servers.app_server.advisor import AI, LOCAL, Advice, ClothingAdvisor
 from src.servers.app_server.external_service import ServiceError
 from src.servers.app_server.local_advisor import LocalAdvisor
@@ -82,8 +83,34 @@ class TestLocalAdvisor(unittest.TestCase):
         baby = self.advisor.recommend(forecast(), [{"name": "נועם", "age_category": "תינוק"}])
         child = self.advisor.recommend(forecast(), [{"name": "יוסי", "age_category": "ילד"}])
 
-        self.assertIn("one more layer", baby)
-        self.assertIn("יוסי", child)
+        self.assertIn("שכבה אחת יותר", baby)
+        self.assertIn("יוסי יזוז", child)
+
+    def test_a_hebrew_family_gets_a_hebrew_paragraph(self):
+        text = self.advisor.recommend(forecast(low=12, high=30, rain="07:00 (60%)"),
+                                      [{"name": "דנה", "age_category": "מבוגר",
+                                        "notes": "ריצה"}])
+
+        self.assertIn("12°", text)
+        self.assertIn("מטרייה", text)              # rain, with the hour
+        self.assertIn("07:00", text)
+        self.assertIn("לערב", text)                # the evening drop
+        self.assertIn("דנה", text)
+        self.assertNotIn("umbrella", text)
+
+    def test_a_hebrew_city_alone_is_enough(self):
+        hebrew = Forecast(Place("אריאל", 32.1, 35.1), min_temp=20, max_temp=24,
+                          current_temp=22, rain_summary="No rain expected")
+
+        self.assertTrue(self.advisor.recommend(hebrew, []).startswith("באריאל"))
+
+    def test_english_input_stays_english(self):
+        self.assertEqual(LocalAdvisor.language_of(forecast(), [ADULT]), "en")
+
+    def test_every_band_has_a_hebrew_wording(self):
+        for temperature in (-10, 0, 8, 15, 21, 27, 35, 50):
+            word, clothing = self.advisor.band(temperature, "he")
+            self.assertTrue(is_rtl(word) and is_rtl(clothing), temperature)
 
     def test_it_copes_with_no_profiles_at_all(self):
         for profiles in ([], None, ["not a dict"]):

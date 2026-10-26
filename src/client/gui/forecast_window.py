@@ -3,7 +3,7 @@ import tkinter as tk
 
 from src.client.gui import theme
 from src.client.gui.base import BaseWindow
-from src.client.gui.parsing import degrees, first_hour
+from src.client.gui.parsing import degrees, first_hour, is_rtl
 
 
 class ForecastWindow(BaseWindow):
@@ -74,10 +74,14 @@ class ForecastWindow(BaseWindow):
         self._badge(head).pack(side=tk.RIGHT)
 
         # The paragraph is the point of the screen, so it is the part that
-        # grows; a Label would not wrap to the window width.
-        text = tk.Message(inner, text=self.card_data.get("advice", ""),
+        # grows; a Label would not wrap to the window width. A Hebrew
+        # paragraph is aligned to the right edge, where Hebrew starts.
+        advice = self.card_data.get("advice", "")
+        rtl = is_rtl(advice)
+        text = tk.Message(inner, text=advice,
                           font=theme.body(), bg=theme.SURFACE, fg=theme.INK,
-                          justify=tk.LEFT, anchor="w", width=420)
+                          justify=tk.RIGHT if rtl else tk.LEFT,
+                          anchor="e" if rtl else "w", width=420)
         text.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
         inner.bind("<Configure>",
                    lambda e: text.configure(width=max(260, e.width - 8)))
