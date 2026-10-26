@@ -47,6 +47,19 @@ class TestTcpListener(unittest.TestCase):
         with self.assertRaises(ValueError):
             TcpListener.read_request(connection)
 
+    def test_a_probe_that_says_nothing_is_not_an_error(self, socket_class):
+        """Render's health probe connects every few seconds and sends nothing."""
+        listener = self.listener(socket_class)
+        connection = MagicMock()
+        connection.recv.side_effect = [b""]
+
+        with self.assertLogs("src.servers.app_server.tcp_listener", level="INFO") as logs:
+            listener.handle(connection, CLIENT)
+
+        self.assertFalse([r for r in logs.records if r.levelname == "ERROR"])
+        connection.sendall.assert_not_called()
+        connection.close.assert_called_once()
+
     def test_it_answers_and_closes(self, socket_class):
         listener = self.listener(socket_class)
         connection = MagicMock()

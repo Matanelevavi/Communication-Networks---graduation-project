@@ -20,6 +20,10 @@ log = logging.getLogger(__name__)
 Address = tuple[str, int]
 
 
+class SilentConnection(ValueError):
+    """The peer connected and closed without sending a single byte."""
+
+
 class TcpListener:
     """Serves requests over TCP, one thread per connection."""
 
@@ -55,6 +59,10 @@ class TcpListener:
             connection.settimeout(TCP_TIMEOUT)
             answer = self.router.handle(self.read_request(connection))
             connection.sendall(as_bytes(answer))
+        except SilentConnection:
+            # A health check or port scan: it connected and left without a
+            # word. Nothing went wrong, so it is not logged as an error.
+            log.info(f"TCP connection from {addr} closed without a request")
         except Exception as e:
             log.error(f"TCP client {addr} error: {e}")
             self._try_send(connection, f"Error: {e}".encode(ENCODING))
@@ -84,6 +92,8 @@ class TcpListener:
 
         if len(buffer) > MAX_REQUEST_SIZE:
             raise ValueError(f"request larger than {MAX_REQUEST_SIZE} bytes")
+        if not buffer:
+            raise SilentConnection()
         raise ValueError("connection closed before a complete request arrived")
 
     @staticmethod

@@ -26,9 +26,14 @@ log = logging.getLogger(__name__)
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 REQUESTS_PER_MINUTE = int(os.environ.get("REQUESTS_PER_MINUTE", 30))
-# Behind a proxy such as Render's, the visitor's address is the last entry the
-# proxy appended to X-Forwarded-For. Anything before it was sent by the visitor
-# and could be forged, so only the last one is trusted, and only when asked to.
+# On Render the request passes Cloudflare and then Render's own proxy, so the
+# peer address is always 127.0.0.1 and X-Forwarded-For reads
+#     <visitor>, <cloudflare edge>, <render proxy>
+# where the last two change from one request to the next: keying on either
+# made every request look like a new visitor and the limit never fired.
+# Cloudflare sets CF-Connecting-IP itself and overwrites a forged one, so that
+# is the trusted source; the third entry from the end is the fallback. Neither
+# is trusted unless TRUST_PROXY says the app really sits behind such a proxy.
 TRUST_PROXY = os.environ.get("TRUST_PROXY", "").lower() in ("1", "true", "yes")
 
 Protocol = Literal["RUDP", "TCP"]
@@ -67,9 +72,13 @@ def error(status: int, message: str, transfer: dict | None = None) -> JSONRespon
 
 def visitor(request: Request) -> str:
     if TRUST_PROXY:
-        forwarded = request.headers.get("x-forwarded-for", "")
-        if forwarded:
-            return forwarded.split(",")[-1].strip()
+        for header in ("cf-connecting-ip", "true-client-ip"):
+            address = request.headers.get(header, "").strip()
+            if address:
+                return address
+        hops = [hop.strip() for hop in request.headers.get("x-forwarded-for", "").split(",")]
+        if len(hops) >= 3 and hops[-3]:
+            return hops[-3]
     return request.client.host if request.client else "unknown"
 
 
@@ -113,12 +122,6 @@ def create_app(gateway: NetworkGateway | None = None,
     @app.get("/api/health")
     def health():
         return {"ok": True, "network": gateway.status}
-
-    @app.get("/api/whoami")          # TEMPORARY diagnostic, removed after use
-    def whoami(request: Request):
-        names = ("x-forwarded-for", "cf-connecting-ip", "true-client-ip", "x-real-ip")
-        return {"seen": {n: request.headers.get(n) for n in names},
-                "client": request.client.host if request.client else None}
 
     @app.post("/api/forecast")
     def forecast(body: ForecastRequest):

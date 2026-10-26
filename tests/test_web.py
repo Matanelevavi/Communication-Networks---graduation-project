@@ -214,6 +214,46 @@ class TestArchiveApi(ApiTestCase):
         self.assertEqual(self.client.get("/api/archive/photo.png").status_code, 415)
 
 
+class TestVisitorIdentity(unittest.TestCase):
+    """Behind Render the peer is 127.0.0.1 and the proxy hops change each time."""
+
+    @staticmethod
+    def visitor(headers, trust=True):
+        import src.web.app as web
+        request = MagicMock(headers=headers, client=MagicMock(host="127.0.0.1"))
+        previous, web.TRUST_PROXY = web.TRUST_PROXY, trust
+        try:
+            return web.visitor(request)
+        finally:
+            web.TRUST_PROXY = previous
+
+    def test_the_visitor_is_the_address_cloudflare_reports(self):
+        # the same person, through two different edge and proxy hops
+        first = {"cf-connecting-ip": "192.114.52.12",
+                 "x-forwarded-for": "192.114.52.12, 172.70.108.67, 10.30.47.157"}
+        second = {"cf-connecting-ip": "192.114.52.12",
+                  "x-forwarded-for": "192.114.52.12, 172.71.147.4, 10.31.55.151"}
+
+        self.assertEqual(self.visitor(first), "192.114.52.12")
+        self.assertEqual(self.visitor(first), self.visitor(second))
+
+    def test_without_that_header_the_third_hop_from_the_end_is_used(self):
+        forwarded = {"x-forwarded-for": "192.114.52.12, 172.70.108.67, 10.30.47.157"}
+
+        self.assertEqual(self.visitor(forwarded), "192.114.52.12")
+
+    def test_an_address_the_visitor_forged_in_front_is_ignored(self):
+        forged = {"x-forwarded-for": "6.6.6.6, 192.114.52.12, 172.70.108.67, 10.30.47.157"}
+
+        self.assertEqual(self.visitor(forged), "192.114.52.12")
+
+    def test_headers_are_not_trusted_unless_a_proxy_is_declared(self):
+        """Run directly, a visitor could name any address and dodge the limit."""
+        headers = {"cf-connecting-ip": "6.6.6.6", "x-forwarded-for": "6.6.6.6, a, b"}
+
+        self.assertEqual(self.visitor(headers, trust=False), "127.0.0.1")
+
+
 class TestProtection(ApiTestCase):
 
     def test_every_response_carries_the_security_headers(self):
