@@ -123,6 +123,19 @@ class TestArchive(AgentTestCase):
 
         self.assertEqual(self.agent.archived_file("../../../secret.txt"), "Safe Content")
 
+    def test_names_the_platform_cannot_place_are_refused_not_raised(self):
+        """Fuzzing found that '::::' raised ValueError out of os.path.commonpath."""
+        for name in ("::::", "C:\\Windows\\win.ini", "a\x00b", "..", ".", "..\\..\\x",
+                     "file.txt:stream"):
+            path = self.agent.store.resolve(name)
+            if path is not None:
+                self.assertTrue(path.startswith(os.path.realpath(self.folder)), name)
+
+    def test_a_backslash_is_a_separator_on_every_platform(self):
+        self.write("secret.txt", b"Safe Content")
+
+        self.assertEqual(self.agent.archived_file("..\\..\\secret.txt"), "Safe Content")
+
     def test_a_binary_file_comes_back_as_bytes(self):
         """Reading in text mode used to raise UnicodeDecodeError."""
         self.write("photo.bin", b"\x89PNG\r\n\x1a\n\xff\xfe")

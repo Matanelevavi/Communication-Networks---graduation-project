@@ -281,6 +281,39 @@ class TestProtection(ApiTestCase):
 
         self.assertEqual(codes, {200})
 
+    def test_an_oversized_body_is_refused_before_it_is_read(self):
+        response = self.client.post("/api/forecast", content=b"x" * (17 * 1024),
+                                    headers={"content-type": "application/json"})
+
+        self.assertEqual(response.status_code, 413)
+        self.gateway.forecast.assert_not_called()
+
+    def test_a_body_without_an_honest_length_is_refused(self):
+        for length in ("abc", "-5", "1e3", "0x10"):
+            response = self.client.post("/api/forecast", content=b"{}",
+                                        headers={"content-length": length})
+            self.assertIn(response.status_code, (400, 411), length)
+
+    def test_hsts_is_sent_only_when_a_proxy_terminates_https(self):
+        import src.web.app as web
+        previous = web.TRUST_PROXY
+        try:
+            web.TRUST_PROXY = False
+            self.assertNotIn("strict-transport-security", self.client.get("/api/health").headers)
+            web.TRUST_PROXY = True
+            self.assertIn("max-age", self.client.get("/api/health").headers["strict-transport-security"])
+        finally:
+            web.TRUST_PROXY = previous
+
+    def test_unknown_methods_and_paths_do_not_leak_internals(self):
+        self.gateway.archived_file.return_value = self.exchange("Error: The file does not exist.")
+        for method, path in (("DELETE", "/api/forecast"), ("PUT", "/api/archive"),
+                             ("GET", "/api/forecast"), ("GET", "/../../etc/passwd"),
+                             ("GET", "/api/archive/%00")):
+            response = self.client.request(method, path, content=b"" if method != "GET" else None)
+            self.assertIn(response.status_code, (400, 404, 405, 411, 422), (method, path))
+            self.assertNotIn("Traceback", response.text)
+
     def test_the_site_is_served(self):
         response = self.client.get("/")
 

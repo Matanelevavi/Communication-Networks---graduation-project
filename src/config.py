@@ -95,6 +95,11 @@ TCP_TIMEOUT = 20.0
 MAX_REQUEST_SIZE = 64 * 1024        # largest request accepted from a client
 MAX_RESPONSE_SIZE = 512 * 1024      # largest payload one RUDP transfer may carry
 
+# Limits that keep one hostile or broken client from using up the server.
+MAX_TCP_CONNECTIONS = 64            # served at once; more are refused, not queued
+MAX_RUDP_TRANSFERS = 32             # answers in flight at once, across all clients
+REQUEST_READ_DEADLINE = 10.0        # seconds to receive a whole request, however slowly it trickles
+
 # How long a fetched forecast is reused. Long enough that a burst of requests
 # for one city costs one call to Open-Meteo, short enough that "right now"
 # still means now.

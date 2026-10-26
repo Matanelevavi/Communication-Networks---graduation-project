@@ -11,7 +11,7 @@ website start and join the network. Stopping this process stops them all.
 import logging
 import os
 import signal
-import subprocess
+import subprocess  # nosec B404 - launches this project's own modules only
 import sys
 
 import uvicorn
@@ -24,7 +24,8 @@ log = logging.getLogger(__name__)
 
 
 def start_servers() -> list[subprocess.Popen]:
-    return [subprocess.Popen([sys.executable, "-m", module], cwd=BASE_DIR)
+    # fixed module names from run.SERVERS, never user input
+    return [subprocess.Popen([sys.executable, "-m", module], cwd=BASE_DIR)  # nosec B603
             for module, _name, _port, _kind in SERVERS]
 
 

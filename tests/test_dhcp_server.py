@@ -1,4 +1,5 @@
 import unittest
+import unittest.mock
 from unittest.mock import patch
 
 from src.config import (ACK_MSG, DHCP_BACKUP_PORT, DHCP_PORT, DISCOVER_MSG,
@@ -166,6 +167,26 @@ class TestBackupServer(DHCPServerTestCase):
 
         self.sock.sendto.assert_not_called()
         self.assertEqual(backup.pool.available, len(backup.pool.free))
+
+
+class TestHostileDatagrams(DHCPServerTestCase):
+    """A single UDP packet from anyone must never take the server down."""
+
+    def test_a_unicode_digit_as_the_chosen_port_does_not_raise(self):
+        """'²'.isdigit() is True and int('²') raises; that ended the whole loop."""
+        server = DHCPServer()
+
+        for port in ("²", "٣", "99999999999999999999"):
+            server.handle(f"{REQUEST_MSG}:192.168.1.100:{port}", CLIENT)
+
+    def test_the_loop_survives_a_message_that_cannot_be_handled(self):
+        self.sock.recvfrom.side_effect = datagrams("anything", DISCOVER_MSG)
+        server = DHCPServer()
+        server.handle = unittest.mock.MagicMock(side_effect=[RuntimeError("boom"), None])
+
+        server.start()
+
+        self.assertEqual(server.handle.call_count, 2)       # the second still ran
 
 
 if __name__ == "__main__":

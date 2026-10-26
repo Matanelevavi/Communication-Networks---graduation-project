@@ -6,7 +6,7 @@ separate machines would run on a real network, and only starts the client once
 every server has actually claimed its port.
 """
 import socket
-import subprocess
+import subprocess  # nosec B404 - launches this project's own modules only
 import sys
 import time
 
@@ -35,11 +35,12 @@ def start(module_name, name):
     # sys.executable is the interpreter running this script, so the servers
     # inherit the same virtual environment instead of whichever "python"
     # happens to be first on PATH.
+    # The arguments are fixed module names from SERVERS: no user input here.
     cmd = [sys.executable, "-m", module_name]
     if sys.platform == "win32":
-        return subprocess.Popen(cmd, cwd=BASE_DIR,
+        return subprocess.Popen(cmd, cwd=BASE_DIR,   # nosec B603
                                 creationflags=subprocess.CREATE_NEW_CONSOLE)
-    return subprocess.Popen(cmd, cwd=BASE_DIR)
+    return subprocess.Popen(cmd, cwd=BASE_DIR)       # nosec B603
 
 
 def port_is_taken(port, kind):

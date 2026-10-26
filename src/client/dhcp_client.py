@@ -112,7 +112,7 @@ class DhcpClient:
     def _wait_for_ack(self, offered_ip: str, deadline: float) -> tuple[bool, str | None]:
         """Returns (granted, rejection reason)."""
         for message, _addr in self._messages_until(deadline):
-            if message.startswith(ACK_MSG) and message.split(":")[1] == offered_ip:
+            if message.startswith(ACK_MSG) and message.split(":")[1:2] == [offered_ip]:
                 return True, None
             if message.startswith(NAK_MSG):
                 return False, message

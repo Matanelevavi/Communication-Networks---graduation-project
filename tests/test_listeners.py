@@ -1,4 +1,5 @@
 import json
+import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -87,6 +88,58 @@ class TestTcpListener(unittest.TestCase):
         with self.assertRaises(SystemExit):
             TcpListener(MagicMock())
 
+    def test_an_internal_failure_is_not_described_to_the_peer(self, socket_class):
+        """The details belong in the log: an exception text can name paths and code."""
+        listener = self.listener(socket_class)
+        listener.router.handle.side_effect = RuntimeError("secret /srv/app/data path")
+        connection = MagicMock()
+        connection.recv.side_effect = [json.dumps({"action": "FTP_LIST"}).encode()]
+
+        listener.handle(connection, CLIENT)
+
+        sent = connection.sendall.call_args[0][0]
+        self.assertTrue(sent.startswith(b"Error:"))
+        self.assertNotIn(b"secret", sent)
+
+    def test_a_request_that_trickles_in_is_cut_off(self, socket_class):
+        """Slowloris: one byte per read must not hold a thread for ever."""
+        connection = MagicMock()
+        connection.recv.return_value = b" "          # never a complete object
+        clock = iter([0.0, 1.0, 5.0, 9.0, 11.0, 12.0])
+
+        with patch("src.servers.app_server.tcp_listener.time.monotonic",
+                   side_effect=lambda: next(clock)):
+            with self.assertRaises(ValueError) as caught:
+                TcpListener.read_request(connection)
+
+        self.assertIn("too long", str(caught.exception))
+
+    def test_connections_beyond_the_ceiling_are_refused_not_queued(self, socket_class):
+        listener = self.listener(socket_class)
+        connections = [MagicMock() for _ in range(3)]
+        socket_class.return_value.accept.side_effect = (
+            [(c, ("127.0.0.1", 40000 + i)) for i, c in enumerate(connections)] + [OSError()])
+        listener.slots = threading.BoundedSemaphore(1)
+
+        with patch("src.servers.app_server.tcp_listener.threading.Thread") as thread:
+            listener.serve_forever()
+
+        self.assertEqual(thread.call_count, 1)               # only the first got a thread
+        for refused in connections[1:]:
+            self.assertTrue(refused.sendall.call_args[0][0].startswith(b"Error:"))
+            refused.close.assert_called_once()
+
+    def test_the_slot_is_given_back_after_every_request(self, socket_class):
+        listener = self.listener(socket_class)
+        listener.slots = threading.BoundedSemaphore(1)
+        listener.slots.acquire()
+        connection = MagicMock()
+        connection.recv.side_effect = [b""]
+
+        listener._serve(connection, CLIENT)
+
+        self.assertTrue(listener.slots.acquire(blocking=False))
+
 
 @patch("src.servers.app_server.rudp_listener.socket.socket")
 class TestRudpListener(unittest.TestCase):
@@ -117,6 +170,30 @@ class TestRudpListener(unittest.TestCase):
 
         listener.sock.sendto.assert_called_once_with(HANDSHAKE_ACK, CLIENT)
         thread.assert_not_called()
+
+    @patch("src.servers.app_server.rudp_listener.threading.Thread")
+    def test_transfers_beyond_the_ceiling_are_not_started(self, thread, socket_class):
+        """UDP source addresses are free to forge, so one cap covers everyone."""
+        from src.config import MAX_RUDP_TRANSFERS
+        listener = self.listener(socket_class)
+        listener.active_transfers.update(("10.0.0.1", port) for port in range(MAX_RUDP_TRANSFERS))
+
+        listener.accept_request('SEQ:1|{"action": "FTP_LIST"}', CLIENT)
+
+        listener.sock.sendto.assert_not_called()           # not even acknowledged
+        thread.assert_not_called()
+        self.assertNotIn(CLIENT, listener.active_transfers)
+
+    @patch("src.servers.app_server.rudp_listener.threading.Thread")
+    def test_a_client_already_served_is_still_acknowledged_at_the_ceiling(self, thread, socket_class):
+        from src.config import MAX_RUDP_TRANSFERS
+        listener = self.listener(socket_class)
+        listener.active_transfers.update(("10.0.0.1", port) for port in range(MAX_RUDP_TRANSFERS - 1))
+        listener.active_transfers.add(CLIENT)
+
+        listener.accept_request('SEQ:1|{"action": "FTP_LIST"}', CLIENT)
+
+        listener.sock.sendto.assert_called_once_with(HANDSHAKE_ACK, CLIENT)
 
     @patch("src.servers.app_server.rudp_listener.threading.Thread")
     def test_a_malformed_request_blocks_nothing(self, thread, socket_class):

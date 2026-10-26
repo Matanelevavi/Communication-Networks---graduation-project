@@ -11,6 +11,10 @@ import threading
 
 log = logging.getLogger(__name__)
 
+# NUL ends a path in C, a colon names a drive or a data stream on Windows, and
+# control characters have no place in a file name.
+FORBIDDEN = {chr(c) for c in range(32)} | {":", "\x7f"}
+
 
 class FileStore:
     """One directory, one lock, and a safe way to name a file inside it."""
@@ -29,13 +33,20 @@ class FileStore:
         becomes ``passwd``.  The containment check is the second line of
         defence: the resolved path must still sit inside the folder.
         """
-        filename = os.path.basename(filename)
-        if not filename:
+        # Both separators are treated as separators on every platform: on Linux
+        # a backslash is an ordinary character to ``basename``, and a name
+        # that is harmless there is a traversal on a Windows machine.
+        filename = os.path.basename(filename.replace("\\", "/"))
+        if filename in ("", ".", "..") or any(c in filename for c in FORBIDDEN):
             return None
 
-        path = os.path.realpath(os.path.join(self.folder, filename))
         root = os.path.realpath(self.folder)
-        if os.path.commonpath([root, path]) != root:
+        try:
+            path = os.path.realpath(os.path.join(self.folder, filename))
+            contained = os.path.commonpath([root, path]) == root
+        except (ValueError, OSError):
+            contained = False                # a name the platform cannot place at all
+        if not contained:
             log.warning(f"Refused a path traversal attempt: {filename!r}")
             return None
         return path

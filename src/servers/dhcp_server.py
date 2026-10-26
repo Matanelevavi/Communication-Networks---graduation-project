@@ -54,7 +54,7 @@ class DHCPServer:
                 self.pool.reclaim_expired()
                 message = self._receive()
                 if message:
-                    self.handle(*message)
+                    self._handle_safely(*message)
         except KeyboardInterrupt:
             log.info(f"Turn off {self.name}")
         finally:
@@ -72,6 +72,18 @@ class DHCPServer:
         except UnicodeDecodeError:
             log.warning("Dropped a non UTF-8 datagram")
             return None
+
+    def _handle_safely(self, message: str, client: Client) -> None:
+        """
+        One bad datagram must never stop the server for everyone else.
+
+        A single UDP packet from anybody used to be able to raise out of
+        :meth:`handle` and end the loop, and with it the only DHCP server.
+        """
+        try:
+            self.handle(message, client)
+        except Exception as e:                      # noqa: BLE001 - last line of defence
+            log.error(f"Dropped a message from {client} that could not be handled: {e!r}")
 
     def handle(self, message: str, client: Client) -> None:
         """Dispatch one message to the step of DORA it belongs to."""
@@ -129,7 +141,11 @@ class DHCPServer:
             return
 
         wanted_ip = parts[1]
-        chosen_port = int(parts[2]) if len(parts) >= 3 and parts[2].isdigit() else None
+        # isdigit() alone is not enough: it is true for "²" and "٣", which
+        # int() then refuses. ASCII digits only, and a real port at that.
+        chosen_port = (int(parts[2]) if len(parts) >= 3
+                       and parts[2].isascii() and parts[2].isdigit()
+                       and len(parts[2]) <= 5 else None)
 
         # The client echoes the port of the server whose offer it accepted, the
         # role the "server identifier" option plays in RFC 2131.  A server that

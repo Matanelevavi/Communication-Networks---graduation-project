@@ -22,13 +22,26 @@ Acknowledgement::
 window. It is optional on the wire, so an acknowledgement without it is still
 valid and simply carries no advertisement.
 """
+import re
 import zlib
 from dataclasses import dataclass
 
 ENCODING = "utf-8"
-FIELD_SEPARATOR = b"|"
 ACK_PREFIX = "ACK:"
 WINDOW_PREFIX = "WIN:"
+
+# Every number on the wire is written one way only: ASCII digits, no sign, no
+# padding, no spaces, at most twelve of them. Python's int() is far more
+# generous (it reads "٣", " 3", "+3" and "0_3"), and a parser that accepts
+# spellings its own encoder never produces accepts datagrams nobody sent, so
+# the header must match its canonical form exactly. The bound keeps a hostile
+# TOTAL from being a number the receiver would wait on for the age of the
+# universe.
+_NUMBER = rb"(0|[1-9][0-9]{0,11})"
+HEADER = re.compile(rb"SEQ:" + _NUMBER + rb"\|TOTAL:" + _NUMBER
+                    + rb"\|CHK:(0|[1-9][0-9]{0,9})\|")
+ACK = re.compile(r"ACK:(0|[1-9][0-9]{0,11})(?:\|WIN:(0|[1-9][0-9]{0,11}))?(?:\|.*)?\Z",
+                 re.ASCII | re.DOTALL)
 
 
 class RudpPacket:
@@ -68,18 +81,12 @@ class RudpPacket:
         ever handles packets that are known to be intact.  A payload may itself
         contain the separator, hence the bounded split.
         """
-        parts = raw.split(FIELD_SEPARATOR, 3)
-        if len(parts) != 4:
+        header = HEADER.match(raw)
+        if header is None:
             return None
 
-        try:
-            seq = int(parts[0].split(b":")[1])
-            total = int(parts[1].split(b":")[1])
-            declared_chk = int(parts[2].split(b":")[1])
-        except (IndexError, ValueError):
-            return None
-
-        payload = parts[3]
+        seq, total, declared_chk = (int(field) for field in header.groups())
+        payload = raw[header.end():]
         if cls.checksum(seq, total, payload) != declared_chk:
             return None
 
@@ -111,23 +118,14 @@ def decode_ack(raw: bytes) -> "Ack | None":
     except UnicodeDecodeError:
         return None
 
-    if not text.startswith(ACK_PREFIX):
+    parsed = ACK.match(text)
+    if parsed is None:
         return None
 
-    parts = text.split("|")
-    try:
-        seq = int(parts[0][len(ACK_PREFIX):])
-    except ValueError:
-        return None
-
-    window = None
-    if len(parts) > 1 and parts[1].startswith(WINDOW_PREFIX):
-        try:
-            window = max(0, int(parts[1][len(WINDOW_PREFIX):]))
-        except ValueError:
-            window = None
-
-    return Ack(seq, window)
+    # An unreadable window leaves the acknowledgement itself usable: it simply
+    # carries no advertisement.
+    seq, window = parsed.groups()
+    return Ack(int(seq), int(window) if window is not None else None)
 
 
 def split_into_chunks(data: bytes, chunk_size: int) -> dict[int, bytes]:

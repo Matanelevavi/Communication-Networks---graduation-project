@@ -52,6 +52,23 @@ class TestIntegrity(unittest.TestCase):
 
         self.assertNotEqual(chk, zlib.crc32(b"weather") & 0xFFFFFFFF)
 
+    def test_a_header_spelled_any_other_way_is_rejected(self):
+        """
+        Fuzzing found that 'REQ:2' parsed as 'SEQ:2' and that int() accepted
+        padding, signs and non ASCII digits: datagrams nobody sent.
+        """
+        body = b"weather"
+        for header in (b"REQ:2|TOTAL:5", b"SEQ:02|TOTAL:5", b"SEQ:+2|TOTAL:5",
+                       b"SEQ: 2|TOTAL:5", b"SEQ:2_0|TOTAL:5", b"SEQ:\xd9\xa2|TOTAL:5",
+                       b"SEQ:2|TOTAL:-5", b"SEQ:2|TOTAL:5|X:1"):
+            chk = RudpPacket.checksum(2, 5, body)
+            self.assertIsNone(RudpPacket.from_bytes(header + b"|CHK:%d|" % chk + body), header)
+
+    def test_a_number_too_long_to_be_real_is_rejected(self):
+        wire = RudpPacket(1, 10**15, b"x").to_bytes()
+
+        self.assertIsNone(RudpPacket.from_bytes(wire))
+
     def test_garbage_is_rejected(self):
         self.assertIsNone(RudpPacket.from_bytes(b"not a packet"))
         self.assertIsNone(RudpPacket.from_bytes(b"SEQ:x|TOTAL:y|CHK:z|data"))
@@ -76,7 +93,9 @@ class TestAcknowledgements(unittest.TestCase):
         self.assertEqual(decode_ack(b"ACK:7|WIN:abc"), Ack(7, None))
 
     def test_rejects_anything_else(self):
-        for raw in (b"NACK:1", b"ACK:x", b"ACK:", b"", b"\xff\xfe"):
+        for raw in (b"NACK:1", b"ACK:x", b"ACK:", b"", b"\xff\xfe",
+                    b"ACK:-1", b"ACK:01", b"ACK: 1", b"ACK:\xd9\xa1",
+                    b"ACK:1x", b"ACK:" + b"9" * 20):
             self.assertIsNone(decode_ack(raw), raw)
 
 

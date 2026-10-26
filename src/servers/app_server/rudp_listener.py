@@ -14,7 +14,7 @@ import threading
 
 from src.config import (APP_ADD, ENCODING, FIN_ACK_MSG, HANDSHAKE_ACK,
                         HANDSHAKE_PREFIX, LOSS_RATE, MAX_REQUEST_SIZE,
-                        MAX_RESPONSE_SIZE, SIMULATE_LOSS)
+                        MAX_RESPONSE_SIZE, MAX_RUDP_TRANSFERS, SIMULATE_LOSS)
 from src.rudp import RudpSender
 from src.servers.app_server.router import RequestRouter
 from src.servers.app_server.wire import as_bytes
@@ -80,7 +80,8 @@ class RudpListener:
 
     def accept_request(self, message: str, addr: Address) -> None:
         """Validate a handshake and start the transfer it asks for."""
-        if SIMULATE_LOSS and random.random() < LOSS_RATE:
+        # random is fine here: it only decides which packets a demo drops
+        if SIMULATE_LOSS and random.random() < LOSS_RATE:    # nosec B311
             log.warning(f"Simulated drop of the request from {addr}")
             return
 
@@ -91,6 +92,17 @@ class RudpListener:
             # leave a bad request blocking that client from ever trying again.
             log.warning(f"Malformed request from {addr}: {e}")
             return
+
+        with self.lock:
+            repeated = addr in self.active_transfers
+            # Each answer is a thread and a socket, and the source address of
+            # a UDP datagram is whatever the sender wrote in it, so the cap is
+            # on transfers overall and not only per client. Over it, the
+            # request is not acknowledged: an honest client retries.
+            if not repeated and len(self.active_transfers) >= MAX_RUDP_TRANSFERS:
+                log.warning(f"Dropping a request from {addr}: "
+                            f"{MAX_RUDP_TRANSFERS} transfers already in flight")
+                return
 
         # Acknowledged even when a transfer is already running: a repeated
         # handshake means the client never saw the first ACK, and it must not

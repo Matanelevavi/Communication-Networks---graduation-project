@@ -1,0 +1,48 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests (python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      # The fuzz tests are part of the suite: Hypothesis generates the inputs.
+      - run: python -m unittest discover -s tests -t . -v
+
+  compile:
+    name: the container image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t weatherwear:ci .
+      - name: the image starts and joins its own network
+        run: |
+          docker run -d --name ww -p 10000:10000 weatherwear:ci
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:10000/api/health | grep -q '"joined":true' && exit 0
+            sleep 2
+          done
+          docker logs ww
+          exit 1

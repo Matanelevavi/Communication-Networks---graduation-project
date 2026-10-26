@@ -112,7 +112,8 @@ class RudpSender:
     def _transmit(self, seq: int, total: int, state: "TransferWindow",
                   addr: Address, first_time: bool) -> None:
         """Put one packet on the wire, honouring the failure simulation switches."""
-        if SIMULATE_LOSS and random.random() < LOSS_RATE:
+        # random is fine here: it only decides which packets a demo drops
+        if SIMULATE_LOSS and random.random() < LOSS_RATE:    # nosec B311
             log.info(f"Packet loss simulation, dropping chunk {seq}")
             return
         if SIMULATE_DELAY and first_time and seq == DELAY_SEQ:

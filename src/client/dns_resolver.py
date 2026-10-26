@@ -84,5 +84,6 @@ class DnsResolver:
         parts = answer.split(":")
         ip = parts[1]
         # A server that answers without a TTL falls back to the local default.
-        ttl = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else DNS_CACHE_TTL
+        ttl = (int(parts[2]) if len(parts) > 2 and parts[2].isascii()
+               and parts[2].isdigit() and len(parts[2]) <= 6 else DNS_CACHE_TTL)
         return ip, ttl

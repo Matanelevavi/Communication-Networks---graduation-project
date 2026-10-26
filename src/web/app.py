@@ -48,7 +48,16 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(self)",
     "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "same-origin",
 }
+
+# Over HTTPS only: telling a browser to insist on HTTPS over plain HTTP, such
+# as a local run, would lock the developer out of http://127.0.0.1.
+HSTS = "max-age=31536000; includeSubDomains"
+
+# A forecast request is a city and a few short names; nothing legitimate comes
+# close to this, so anything larger is refused before it is read.
+MAX_BODY_BYTES = 16 * 1024
 
 
 class Person(BaseModel):
@@ -102,6 +111,14 @@ def create_app(gateway: NetworkGateway | None = None,
     @app.middleware("http")
     async def guard(request: Request, call_next):
         path = request.url.path
+
+        if request.method in ("POST", "PUT", "PATCH"):
+            length = request.headers.get("content-length", "")
+            if not length.isascii() or not length.isdigit():
+                return error(411, "A Content-Length is required.")
+            if int(length) > MAX_BODY_BYTES:
+                return error(413, "That request is too large.")
+
         if path.startswith("/api/") and path not in ("/api/health",) \
                 and not path.startswith(("/api/docs", "/api/openapi")):
             key = visitor(request)
@@ -114,6 +131,8 @@ def create_app(gateway: NetworkGateway | None = None,
         if not path.startswith("/api/docs"):        # the docs page loads its own assets
             for name, value in SECURITY_HEADERS.items():
                 response.headers.setdefault(name, value)
+        if TRUST_PROXY:
+            response.headers.setdefault("Strict-Transport-Security", HSTS)
         if path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-store")
         return response
