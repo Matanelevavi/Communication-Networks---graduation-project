@@ -36,6 +36,28 @@ class TestLanguage(unittest.TestCase):
         self.assertEqual(forecast.place.name, "אריאל")
         self.assertEqual(get.call_args_list[0][1]["params"]["language"], "he")
 
+    def test_a_hebrew_town_open_meteo_does_not_know_falls_back_to_english(self, get):
+        """'אריאל' finds nothing at Open-Meteo; 'Ariel' does."""
+        get.side_effect = [response({}),
+                           response({"results": [{"latitude": 32.1, "longitude": 35.2,
+                                                  "name": "Ariel"}]}),
+                           response(HOURLY)]
+
+        forecast = WeatherService().fetch("אריאל")
+
+        self.assertEqual(get.call_args_list[1][1]["params"]["name"], "Ariel")
+        self.assertEqual(forecast.place.name, "אריאל")      # shown as typed
+        self.assertEqual(forecast.place.latitude, 32.1)
+
+    def test_an_unknown_hebrew_name_is_still_not_found(self, get):
+        get.return_value = response({})
+
+        with self.assertRaises(ServiceError) as caught:
+            WeatherService().fetch("עיר שלא קיימת")
+
+        self.assertIn("not found", str(caught.exception))
+        self.assertEqual(get.call_count, 1)             # nothing to fall back to
+
     def test_an_english_city_is_looked_up_in_english(self, get):
         get.side_effect = [response(GEOCODED), response(HOURLY)]
 

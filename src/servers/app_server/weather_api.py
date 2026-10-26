@@ -24,8 +24,30 @@ log = logging.getLogger(__name__)
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
-RAIN_THRESHOLD = 10          # percent, above which an hour is worth mentioning
+RAIN_THRESHOLD = 30          # percent: below this, "rain is likely" would mislead
 FORECAST_HOURS = 24
+
+# Open-Meteo knows the big cities by their Hebrew names but not every town:
+# "אריאל" finds nothing while "Ariel" does. When a Hebrew search comes back
+# empty, the English name from this table is tried, and the Hebrew name the
+# user typed is kept for display.
+HEBREW_CITY_NAMES = {
+    "אריאל": "Ariel", "תל אביב": "Tel Aviv", "תל אביב יפו": "Tel Aviv",
+    "ירושלים": "Jerusalem", "חיפה": "Haifa", "באר שבע": "Beersheba",
+    "אילת": "Eilat", "נתניה": "Netanya", "אשדוד": "Ashdod", "אשקלון": "Ashkelon",
+    "חולון": "Holon", "בת ים": "Bat Yam", "רמת גן": "Ramat Gan",
+    "גבעתיים": "Givatayim", "בני ברק": "Bnei Brak", "פתח תקווה": "Petah Tikva",
+    "פתח תקוה": "Petah Tikva", "ראשון לציון": "Rishon LeZion", "רחובות": "Rehovot",
+    "נס ציונה": "Ness Ziona", "לוד": "Lod", "רמלה": "Ramla", "מודיעין": "Modiin",
+    "מודיעין מכבים רעות": "Modiin", "כפר סבא": "Kfar Saba", "רעננה": "Ra'anana",
+    "הרצליה": "Herzliya", "הוד השרון": "Hod HaSharon", "ראש העין": "Rosh HaAyin",
+    "חדרה": "Hadera", "זכרון יעקב": "Zikhron Ya'akov", "עפולה": "Afula",
+    "נצרת": "Nazareth", "טבריה": "Tiberias", "צפת": "Safed", "עכו": "Acre",
+    "נהריה": "Nahariya", "כרמיאל": "Karmiel", "קריית שמונה": "Kiryat Shmona",
+    "יקנעם": "Yokneam", "בית שמש": "Beit Shemesh", "מעלה אדומים": "Ma'ale Adummim",
+    "דימונה": "Dimona", "ערד": "Arad", "קריית גת": "Kiryat Gat", "שדרות": "Sderot",
+    "אופקים": "Ofakim", "נתיבות": "Netivot", "יבנה": "Yavne", "אור יהודה": "Or Yehuda",
+}
 
 
 @dataclass(frozen=True)
@@ -78,24 +100,36 @@ class WeatherService(ExternalService):
         return self._forecast(place)
 
     def _geocode(self, city_name: str) -> Place:
-        # Parameters go to requests rather than into an f-string, so a name
-        # such as "Tel Aviv" is percent encoded correctly.  A Hebrew query is
-        # answered with the Hebrew name, so the card shows what the user typed.
-        payload = self._get(GEOCODING_URL, {
-            "name": city_name, "count": 1, "format": "json",
-            "language": "en" if self.is_english_only(city_name) else "he",
-        })
+        hebrew = not self.is_english_only(city_name)
+        results = self._search(city_name, "he" if hebrew else "en")
 
-        results = payload.get("results")
+        # A Hebrew name Open-Meteo does not know: try the English one, but
+        # show the city by the name the user typed.
+        english = HEBREW_CITY_NAMES.get(" ".join(city_name.replace("-", " ").split()))
+        display_name = None
+        if not results and hebrew and english:
+            results = self._search(english, "he")
+            display_name = city_name
+
         if not results:
             raise ServiceError(f"'{city_name}' was not found.")
 
         first = results[0]
         try:
-            return Place(first.get("name", city_name), first["latitude"], first["longitude"])
+            return Place(display_name or first.get("name", city_name),
+                         first["latitude"], first["longitude"])
         except (KeyError, TypeError) as e:
             raise ServiceError("The geocoding service returned "
                                "an unexpected answer.") from e
+
+    def _search(self, name: str, language: str) -> list:
+        # Parameters go to requests rather than into an f-string, so a name
+        # such as "Tel Aviv" is percent encoded correctly.  A Hebrew query is
+        # answered with the Hebrew name, so the card shows what the user typed.
+        payload = self._get(GEOCODING_URL, {
+            "name": name, "count": 1, "format": "json", "language": language,
+        })
+        return payload.get("results") or []
 
     def _forecast(self, place: Place) -> Forecast:
         payload = self._get(FORECAST_URL, {
