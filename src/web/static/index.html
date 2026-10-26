@@ -28,6 +28,7 @@
       <nav class="tabs" role="tablist" aria-label="Sections">
         <button class="tab" role="tab" id="tab-forecast" aria-controls="panel-forecast" aria-selected="true" data-i18n="tab_forecast">Forecast</button>
         <button class="tab" role="tab" id="tab-archive" aria-controls="panel-archive" aria-selected="false" tabindex="-1" data-i18n="tab_archive">Archive</button>
+        <button class="tab" role="tab" id="tab-lab" aria-controls="panel-lab" aria-selected="false" tabindex="-1" data-i18n="tab_lab">Protocol lab</button>
         <button class="tab" role="tab" id="tab-how" aria-controls="panel-how" aria-selected="false" tabindex="-1" data-i18n="tab_how">How it works</button>
       </nav>
       <div class="toolbar">
@@ -151,6 +152,83 @@
         <div class="card viewer">
           <h2 id="viewer-title" data-i18n="viewer_empty">Choose a file</h2>
           <pre id="viewer" dir="auto" tabindex="0"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================== lab -->
+    <section id="panel-lab" role="tabpanel" aria-labelledby="tab-lab" hidden>
+      <div class="hero">
+        <h1 data-i18n="lab_title">Break the network, watch the protocol</h1>
+        <p class="lede" data-i18n="lab_lede">Send the same file through a simulated network.</p>
+      </div>
+
+      <div class="presets" role="group" aria-labelledby="lab-presets-label">
+        <span id="lab-presets-label" class="muted" data-i18n="lab_presets">Scenarios</span>
+        <div class="chips" id="lab-presets"></div>
+      </div>
+
+      <div class="layout layout--lab">
+        <form id="lab-form" class="card lab-controls" novalidate>
+          <div class="slider">
+            <div class="slider__head"><label for="lab-loss" data-i18n="lab_loss">Packet loss</label><output id="lab-loss-out" for="lab-loss"></output></div>
+            <input id="lab-loss" type="range" min="0" max="50" step="1" value="5">
+          </div>
+          <div class="slider">
+            <div class="slider__head"><label for="lab-delay" data-i18n="lab_delay">One-way delay</label><output id="lab-delay-out" for="lab-delay"></output></div>
+            <input id="lab-delay" type="range" min="1" max="400" step="1" value="40">
+          </div>
+          <div class="slider">
+            <div class="slider__head"><label for="lab-size" data-i18n="lab_size">File size</label><output id="lab-size-out" for="lab-size"></output></div>
+            <input id="lab-size" type="range" min="1" max="256" step="1" value="64">
+          </div>
+          <div class="slider">
+            <div class="slider__head"><label for="lab-buffer" data-i18n="lab_buffer">Receive buffer</label><output id="lab-buffer-out" for="lab-buffer"></output></div>
+            <input id="lab-buffer" type="range" min="1" max="64" step="1" value="8">
+          </div>
+          <div class="seed-row">
+            <label for="lab-seed" data-i18n="lab_seed">Seed</label>
+            <input id="lab-seed" type="number" min="0" max="2147483647" step="1" value="1" inputmode="numeric">
+            <button type="button" class="btn btn--ghost btn--small" id="lab-shuffle" data-i18n="lab_shuffle">New seed</button>
+          </div>
+          <button class="btn btn--primary" id="lab-run" type="submit">
+            <span class="spinner" aria-hidden="true"></span>
+            <span data-i18n="lab_run">Run the transfer</span>
+          </button>
+        </form>
+
+        <div class="result lab-result" id="lab-result" aria-live="polite">
+          <div class="alert" id="lab-error" role="alert" hidden></div>
+          <p class="lab-summary" id="lab-summary"></p>
+
+          <div class="card charts" id="lab-charts" hidden>
+            <div class="chart-legend" id="lab-legend"></div>
+            <figure class="chart" id="chart-rudp-wrap">
+              <figcaption id="chart-rudp-title"></figcaption>
+              <svg id="chart-rudp" viewBox="0 0 640 220" role="img" preserveAspectRatio="xMidYMid meet"></svg>
+            </figure>
+            <figure class="chart" id="chart-tcp-wrap">
+              <figcaption id="chart-tcp-title"></figcaption>
+              <svg id="chart-tcp" viewBox="0 0 640 220" role="img" preserveAspectRatio="xMidYMid meet"></svg>
+            </figure>
+            <div class="actions">
+              <button class="btn btn--ghost btn--small" type="button" id="lab-replay" data-i18n="lab_replay">Replay</button>
+              <button class="btn btn--ghost btn--small" type="button" id="lab-link" data-i18n="lab_share">Copy link to this experiment</button>
+            </div>
+          </div>
+
+          <div class="card" id="lab-table-card" hidden>
+            <h2 class="lab-h2" data-i18n="lab_table_title">Result</h2>
+            <div class="table-scroll">
+              <table class="compare" id="lab-table"></table>
+            </div>
+          </div>
+
+          <div class="card lab-notes">
+            <h2 class="lab-h2" data-i18n="lab_notes_title">How to read this</h2>
+            <ul id="lab-notes"></ul>
+            <p class="hint" data-i18n="lab_honesty">The TCP line is a model.</p>
+          </div>
         </div>
       </div>
     </section>

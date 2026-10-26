@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from src.config import MAX_PROFILE_FIELD, MAX_PROFILES
+from src.lab import runner as lab
 from src.web.gateway import GatewayError, NetworkGateway
 from src.web.limits import RateLimiter
 
@@ -26,6 +27,7 @@ log = logging.getLogger(__name__)
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 REQUESTS_PER_MINUTE = int(os.environ.get("REQUESTS_PER_MINUTE", 30))
+LAB_REQUESTS_PER_MINUTE = int(os.environ.get("LAB_REQUESTS_PER_MINUTE", 60))
 # On Render the request passes Cloudflare and then Render's own proxy, so the
 # peer address is always 127.0.0.1 and X-Forwarded-For reads
 #     <visitor>, <cloudflare edge>, <render proxy>
@@ -72,6 +74,16 @@ class ForecastRequest(BaseModel):
     protocol: Protocol = "RUDP"
 
 
+class LabRequest(BaseModel):
+    """One experiment. The bounds are the lab's own, repeated here so a bad value is a 422."""
+    size_kb: int = Field(default=64, ge=lab.SIZE_KB[0], le=lab.SIZE_KB[1])
+    loss: float = Field(default=0.05, ge=lab.LOSS[0], le=lab.LOSS[1])
+    delay_ms: int = Field(default=40, ge=lab.DELAY_MS[0], le=lab.DELAY_MS[1])
+    buffer: int = Field(default=8, ge=lab.BUFFER[0], le=lab.BUFFER[1])
+    seed: int = Field(default=1, ge=0, le=2**31 - 1)
+    protocols: list[Protocol] = Field(default=["RUDP", "TCP"], min_length=1, max_length=2)
+
+
 def error(status: int, message: str, transfer: dict | None = None) -> JSONResponse:
     body = {"error": message}
     if transfer:
@@ -92,9 +104,14 @@ def visitor(request: Request) -> str:
 
 
 def create_app(gateway: NetworkGateway | None = None,
-               limiter: RateLimiter | None = None) -> FastAPI:
+               limiter: RateLimiter | None = None,
+               lab_limiter: RateLimiter | None = None) -> FastAPI:
     gateway = gateway or NetworkGateway()
     limiter = limiter or RateLimiter(REQUESTS_PER_MINUTE)
+    # The lab calls no outside service and costs a few milliseconds, so it gets
+    # a more generous budget of its own, which also keeps experimenting with
+    # the sliders from using up the budget for real forecasts.
+    lab_limiter = lab_limiter or RateLimiter(LAB_REQUESTS_PER_MINUTE)
 
     @asynccontextmanager
     async def lifespan(_app):
@@ -122,9 +139,10 @@ def create_app(gateway: NetworkGateway | None = None,
         if path.startswith("/api/") and path not in ("/api/health",) \
                 and not path.startswith(("/api/docs", "/api/openapi")):
             key = visitor(request)
-            if not limiter.allow(key):
+            budget = lab_limiter if path == "/api/lab" else limiter
+            if not budget.allow(key):
                 response = error(429, "Too many requests, please wait a moment.")
-                response.headers["Retry-After"] = str(limiter.retry_after(key))
+                response.headers["Retry-After"] = str(budget.retry_after(key))
                 return response
 
         response = await call_next(request)
@@ -155,6 +173,15 @@ def create_app(gateway: NetworkGateway | None = None,
             return error(422, exchange.error_message or "Unexpected answer from the server.",
                          exchange.transfer())
         return {"forecast": card, "transfer": exchange.transfer()}
+
+    @app.post("/api/lab")
+    def run_lab(body: LabRequest):
+        """Run the same transfer under each protocol on a simulated link."""
+        params = lab.LabParams(body.size_kb, body.loss, body.delay_ms, body.buffer, body.seed)
+        return {"params": {"size_kb": params.size_kb, "loss": params.loss,
+                           "delay_ms": params.delay_ms, "buffer": params.buffer,
+                           "seed": params.seed},
+                "runs": lab.run_lab(params, tuple(dict.fromkeys(body.protocols)))}
 
     @app.get("/api/archive")
     def archive(protocol: Protocol = "RUDP"):

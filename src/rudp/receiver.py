@@ -29,9 +29,10 @@ class RudpReceiver:
     """Reassembles one transfer arriving on a socket."""
 
     def __init__(self, sock, timeout: float = TCP_TIMEOUT,
-                 buffer: ReceiveBuffer | None = None) -> None:
+                 buffer: ReceiveBuffer | None = None, verbose: bool = True) -> None:
         self.sock = sock
         self.timeout = timeout
+        self.verbose = verbose
         self.buffer = buffer or ReceiveBuffer()
         self.total: int | None = None
         self.sender_addr: Address | None = None
@@ -65,31 +66,14 @@ class RudpReceiver:
 
             if not self._is_expected_sender(src):
                 continue
-            self.datagrams += 1
 
-            packet = RudpPacket.from_bytes(raw)
-            if packet is None:
-                self.corrupted += 1
-                log.warning("[RUDP] Corrupted or malformed packet dropped")
+            seq = self.process(raw)
+            if seq is None:
                 continue
-
-            self.total = packet.total
-            first_time = not self.buffer.has_seen(packet.seq)
-            if not first_time:
-                self.duplicates += 1
-
-            # A chunk the buffer has no room for is left unacknowledged on
-            # purpose: the sender will resend it once the window reopens.
-            if not self.buffer.accept(packet.seq, packet.payload):
-                continue
-
-            if first_time:
-                log.info(f"[RUDP] Chunk {packet.seq}/{packet.total} received "
-                         f"(rwnd {self.buffer.advertised_window})")
 
             # Every accepted packet is acknowledged, duplicates included: the
             # sender only repeats itself because it never saw the first ACK.
-            self._acknowledge(packet.seq)
+            self._acknowledge(seq)
 
             if self.is_complete():
                 if linger:
@@ -97,6 +81,38 @@ class RudpReceiver:
                 payload = self.buffer.payload()
                 log.info(f"[RUDP] Transfer complete, {len(payload)} bytes")
                 return payload
+
+    def process(self, raw: bytes) -> int | None:
+        """
+        Take one datagram. Returns the sequence number to acknowledge, or
+        ``None`` when the datagram must go unanswered.
+
+        Everything the receiver decides lives here, apart from the socket, so
+        the protocol lab drives the very same logic over a simulated link.
+        """
+        self.datagrams += 1
+
+        packet = RudpPacket.from_bytes(raw)
+        if packet is None:
+            self.corrupted += 1
+            if self.verbose:
+                log.warning("[RUDP] Corrupted or malformed packet dropped")
+            return None
+
+        self.total = packet.total
+        first_time = not self.buffer.has_seen(packet.seq)
+        if not first_time:
+            self.duplicates += 1
+
+        # A chunk the buffer has no room for is left unacknowledged on
+        # purpose: the sender will resend it once the window reopens.
+        if not self.buffer.accept(packet.seq, packet.payload):
+            return None
+
+        if first_time and self.verbose:
+            log.info(f"[RUDP] Chunk {packet.seq}/{packet.total} received "
+                     f"(rwnd {self.buffer.advertised_window})")
+        return packet.seq
 
     # -------------------------------------------------------------- helpers
     def _read(self) -> tuple[bytes, Address] | None:

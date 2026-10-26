@@ -28,6 +28,36 @@ phone, has a dark mode, and keeps the family you describe on your own device.
 Every answer comes with an **Under the hood** panel: which transport carried
 it, how many datagrams arrived, how many were duplicates or failed their CRC.
 
+### The protocol lab
+
+The **Protocol lab** tab sends one file through a simulated network, with the
+packet loss, one way delay, file size and receive buffer you choose, and draws
+the congestion window as it happens: slow start, a timeout collapsing the window
+to one, a fast retransmit halving it, the receive buffer capping it. Every
+experiment has a link (`#lab?loss=15&delay=80&size=64&buffer=8&seed=2`) you can
+share.
+
+It is not an animation. The numbers come from `/api/lab`, which runs
+
+* **the project's real `RudpSender` and `RudpReceiver`**, unchanged, on a
+  simulated link with a virtual clock (`src/lab/rudp_run.py`): the socket is the
+  only thing replaced, and the receiver's decisions live in `RudpReceiver.process`,
+  the same method its `receive` loop calls for every datagram;
+* **a TCP Reno model** on the same link (`src/lab/tcp_model.py`): cumulative
+  acknowledgements, the same slow start and congestion avoidance, fast retransmit
+  after three duplicate ACKs and a timeout. It is a model, not the operating
+  system's TCP, which cannot be placed on a lossy virtual link, and the page says so.
+
+The link decides loss by hashing `(seed, direction, sequence number, attempt)`, so
+both protocols lose the very same first transmissions and the same inputs always
+give the same answer. Each run ends by checking that the received bytes equal the
+bytes sent. A minute of simulated network takes milliseconds to compute, and the
+inputs are bounded (256 KB, 50 % loss, 400 ms), so the worst case stays cheap.
+
+It also shows things that are not flattering. At 15 % loss RUDP gives up after four
+timeouts in a row while Reno keeps going: that is how `MAX_RETRIES` is set, and the
+lab makes the cost of that choice visible.
+
 A browser cannot speak RUDP, and the RUDP port must never face the internet: a
 small request that triggers a large answer is exactly what a reflection attack
 needs. So the website is **one more host on the simulated network**. It joins
@@ -153,6 +183,8 @@ src/servers/
   app_server/file_archive.py          list, read, render a CSV as a table
   app_server/storage.py               guarded access to the data directory
 
+src/lab/                              the protocol lab: a simulated link, real RUDP on it, a Reno model
+
 src/web/                              the website, one more host on the network
   gateway.py                          joins over DHCP/DNS, relays over TCP/RUDP
   app.py                              FastAPI: validation, headers, the API
@@ -256,7 +288,7 @@ pip install -r requirements-dev.txt
 python -m unittest discover -s tests -t .
 ```
 
-337 unit tests covering the DHCP lease state machine, DNS answers, RUDP framing,
+More than 400 tests covering the DHCP lease state machine, DNS answers, RUDP framing,
 congestion control and flow control, TCP message framing, storage, the advisor
 fallback, the external API clients, and the website's gateway, rate limit,
 input validation and security headers. They use mocked sockets, so no server has

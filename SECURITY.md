@@ -49,6 +49,7 @@ behind it, because they are also run directly in the desktop client.
 | 14 | A secret committed to the repository | The key is read from the environment only; gitleaks runs on every push over the whole history; the history was rewritten after a key leaked early on | `.github/workflows/secrets.yml` |
 | 15 | A vulnerable dependency | `pip-audit` on every push and weekly, Dependabot, and Trivy on the built image | `.github/workflows/security.yml` |
 | 16 | The container running as root | It runs as an unprivileged user (uid 10001) | `Dockerfile` |
+| 17 | The protocol lab used to burn CPU | Every input is bounded (256 KB, 50 % loss, 400 ms, 64 packets) at the API and again in the runner; a run is capped at 400,000 simulated events; the worst case measured is under 50 ms; the lab has a rate limit of its own, so it cannot starve real forecasts | `src/lab/`, `LabRequest`, tested |
 
 ### What fuzzing found
 

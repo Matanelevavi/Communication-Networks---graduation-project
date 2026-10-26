@@ -50,6 +50,41 @@ const STRINGS = {
     status_title: "Network status", status_joined: "Joined", status_ip: "Address from DHCP",
     status_server: "App server from DNS", status_domain: "Domain", yes: "Yes", no: "No",
     footer: "A computer networks graduation project.", api: "API", weather_credit: "Weather data: Open-Meteo",
+    tab_lab: "Protocol lab",
+    lab_title: "Break the network, watch the protocol",
+    lab_lede: "Send the same file through a simulated network, with the loss, delay and receive buffer you choose. The RUDP sender is this project's real code; the TCP side is a Reno model on the same link.",
+    lab_presets: "Scenarios",
+    preset_clean: "Clean link", preset_wifi: "Flaky Wi-Fi", preset_congested: "Congested",
+    preset_slow: "Slow receiver", preset_sat: "Satellite",
+    lab_loss: "Packet loss", lab_delay: "One-way delay", lab_size: "File size", lab_buffer: "Receive buffer",
+    lab_seed: "Seed", lab_shuffle: "New seed", lab_unit_packets: "packets",
+    lab_run: "Run the transfer", lab_replay: "Replay", lab_share: "Copy link to this experiment",
+    lab_copied: "Link copied",
+    lab_chart_rudp: "RUDP, this project's own code", lab_chart_tcp: "TCP Reno, a model",
+    lab_axis_time: "time (s)", lab_axis_cwnd: "packets",
+    lab_legend_cwnd: "congestion window", lab_legend_ssthresh: "ssthresh",
+    lab_legend_rwnd: "receive buffer limit", lab_legend_loss: "packet lost",
+    lab_legend_timeout: "timeout", lab_legend_fast: "fast retransmit",
+    lab_gave_up_at: (s) => `gave up at ${s} s`,
+    lab_table_title: "Result",
+    m_status: "Outcome", m_time: "Time", m_goodput: "Throughput", m_sent: "Packets sent",
+    m_retx: "Retransmissions", m_timeouts: "Timeouts", m_fast: "Fast retransmits", m_verified: "Data intact",
+    m_done: "Finished", m_gaveup: "Gave up", m_yes: "Yes, byte for byte", m_no: "No",
+    lab_name_rudp: "RUDP", lab_name_tcp: "The TCP model",
+    lab_same: "Both finished in about the same time.",
+    lab_faster: (a, b, x) => `${a} finished ${x} times faster than ${b}.`,
+    lab_gaveup: (who, s) => `${who} gave up after ${s} s: it timed out several times in a row and nothing came back.`,
+    lab_both_failed: "Neither finished: the network was too bad.",
+    lab_error: "The lab could not run that experiment.",
+    lab_notes_title: "How to read this",
+    lab_notes: [
+      "Slow start: the window doubles every round trip until it reaches ssthresh, then grows by one packet per round trip.",
+      "A timeout means nothing came back for a full second: the window falls to 1 and ssthresh is halved. Three duplicate ACKs trigger a fast retransmit instead: the window is only halved.",
+      "The receive buffer caps the window. The receiver says how much room it has (flow control), and the sender obeys the smaller of that and its own window.",
+      "RUDP gives up after 4 timeouts in a row, by design. The Reno model keeps trying much longer. That is a real difference between the two, not a drawing choice.",
+      "Time is virtual: a minute of simulated network takes milliseconds to compute, and one seed gives both protocols exactly the same loss pattern.",
+    ],
+    lab_honesty: "The TCP line is a model of TCP Reno, not your operating system's TCP, which cannot be placed on a lossy virtual link. The RUDP line is the real sender and receiver from src/rudp, unchanged.",
     chips: ["Tel Aviv", "Jerusalem", "Haifa", "Ariel", "Beersheba", "Eilat"],
     lang_button: "עב", lang_label: "עברית", theme_label: "Switch theme",
   },
@@ -94,6 +129,41 @@ const STRINGS = {
     status_title: "מצב הרשת", status_joined: "מחובר", status_ip: "כתובת מ-DHCP",
     status_server: "שרת האפליקציה מ-DNS", status_domain: "דומיין", yes: "כן", no: "לא",
     footer: "פרויקט גמר ברשתות תקשורת.", api: "API", weather_credit: "נתוני מזג אוויר: Open-Meteo",
+    tab_lab: "מעבדת פרוטוקולים",
+    lab_title: "מקלקלים את הרשת, ורואים מה הפרוטוקול עושה",
+    lab_lede: "שולחים את אותו קובץ ברשת מדומה, עם אובדן חבילות, השהיה וגודל באפר לפי בחירתכם. השולח של RUDP הוא הקוד האמיתי של הפרויקט; צד ה-TCP הוא מודל של Reno על אותו קו.",
+    lab_presets: "תרחישים",
+    preset_clean: "קו נקי", preset_wifi: "Wi-Fi לא יציב", preset_congested: "עומס",
+    preset_slow: "מקבל איטי", preset_sat: "לוויין",
+    lab_loss: "אובדן חבילות", lab_delay: "השהיה בכיוון אחד", lab_size: "גודל קובץ", lab_buffer: "באפר קבלה",
+    lab_seed: "זרע", lab_shuffle: "זרע חדש", lab_unit_packets: "חבילות",
+    lab_run: "הרצת ההעברה", lab_replay: "הפעלה חוזרת", lab_share: "העתקת קישור לניסוי",
+    lab_copied: "הקישור הועתק",
+    lab_chart_rudp: "RUDP, הקוד של הפרויקט", lab_chart_tcp: "TCP Reno, מודל",
+    lab_axis_time: "זמן (שניות)", lab_axis_cwnd: "חבילות",
+    lab_legend_cwnd: "חלון עומס", lab_legend_ssthresh: "ssthresh",
+    lab_legend_rwnd: "גבול באפר הקבלה", lab_legend_loss: "חבילה אבדה",
+    lab_legend_timeout: "תם הזמן (timeout)", lab_legend_fast: "שליחה חוזרת מהירה",
+    lab_gave_up_at: (s) => `ויתר אחרי ${s} שניות`,
+    lab_table_title: "תוצאה",
+    m_status: "תוצאה", m_time: "זמן", m_goodput: "תפוקה", m_sent: "חבילות שנשלחו",
+    m_retx: "שליחות חוזרות", m_timeouts: "תם הזמן", m_fast: "שליחות חוזרות מהירות", m_verified: "הנתונים שלמים",
+    m_done: "הסתיים", m_gaveup: "ויתר", m_yes: "כן, בייט אחרי בייט", m_no: "לא",
+    lab_name_rudp: "RUDP", lab_name_tcp: "מודל ה-TCP",
+    lab_same: "שניהם הסתיימו בערך באותו זמן.",
+    lab_faster: (a, b, x) => `${a} הסתיים פי ${x} מהר יותר מ${b}.`,
+    lab_gaveup: (who, s) => `${who} ויתר אחרי ${s} שניות: נגמר לו הזמן כמה פעמים ברצף ושום דבר לא חזר.`,
+    lab_both_failed: "אף אחד לא הסתיים: הרשת הייתה גרועה מדי.",
+    lab_error: "המעבדה לא הצליחה להריץ את הניסוי.",
+    lab_notes_title: "איך קוראים את זה",
+    lab_notes: [
+      "Slow start: החלון מוכפל בכל הלוך-חזור עד ש-ssthresh, ומשם גדל בחבילה אחת לכל הלוך-חזור.",
+      "Timeout אומר שלא חזר כלום שנייה שלמה: החלון יורד ל-1 וה-ssthresh מתחלק בשניים. שלושה אישורים כפולים מפעילים שליחה חוזרת מהירה במקום זה: החלון רק מתחלק בשניים.",
+      "באפר הקבלה מגביל את החלון. המקבל אומר כמה מקום יש לו (בקרת זרימה), והשולח מציית לקטן מבין זה לבין החלון שלו.",
+      "RUDP מוותר אחרי 4 פעמים ברצף שלא חזרה תשובה, בכוונה. מודל Reno ממשיך לנסות הרבה יותר זמן. זה הבדל אמיתי בין השניים, לא בחירה בציור.",
+      "הזמן וירטואלי: דקה של רשת מדומה מחושבת באלפיות שנייה, וזרע אחד נותן לשני הפרוטוקולים בדיוק אותו דפוס אובדן.",
+    ],
+    lab_honesty: "קו ה-TCP הוא מודל של TCP Reno, לא ה-TCP של מערכת ההפעלה, שאי אפשר להניח על קו וירטואלי עם אובדן. קו ה-RUDP הוא השולח והמקבל האמיתיים מ-src/rudp, בלי שינוי.",
     chips: ["תל אביב", "ירושלים", "חיפה", "אריאל", "באר שבע", "אילת"],
     lang_button: "EN", lang_label: "English", theme_label: "החלפת ערכת צבעים",
   },
@@ -148,6 +218,11 @@ function applyLanguage() {
   renderPeople();
   updateProtocolHint();
   if (state.lastCard) renderForecast(state.lastCard.forecast, state.lastCard.transfer);
+  renderLabPresets();
+  renderLabNotes();
+  renderLabLegend();
+  updateLabOutputs();
+  if (labState.result) renderLabResult();
 }
 
 // ---------------------------------------------------------------- theme
@@ -173,6 +248,7 @@ function selectTab(id) {
     document.getElementById(tab.getAttribute("aria-controls")).hidden = !selected;
   });
   if (id === "tab-archive") loadArchive();
+  if (id === "tab-lab") openLab();
   if (id === "tab-how") loadStatus();
 }
 
@@ -518,6 +594,379 @@ async function loadStatus() {
   }
 }
 
+// -------------------------------------------------------------------- lab
+// Every number drawn here comes back from /api/lab: the real RUDP sender and
+// a Reno model, run over a simulated link. Nothing on this page is scripted.
+const SVG_NS = "http://www.w3.org/2000/svg";
+const PRESETS = {
+  clean:     { loss: 0,  delay: 40,  size: 64,  buffer: 8, seed: 1 },
+  wifi:      { loss: 5,  delay: 40,  size: 64,  buffer: 8, seed: 1 },
+  congested: { loss: 15, delay: 80,  size: 64,  buffer: 8, seed: 2 },
+  slow:      { loss: 0,  delay: 40,  size: 64,  buffer: 2, seed: 1 },
+  sat:       { loss: 1,  delay: 300, size: 128, buffer: 16, seed: 1 },
+};
+const LAB_FIELDS = ["loss", "delay", "size", "buffer"];
+const labState = { result: null, frame: null, preset: null, ran: false };
+
+function svgEl(tag, attrs = {}, text) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value);
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function labParams() {
+  return {
+    loss: Number($("#lab-loss").value) / 100,
+    delay_ms: Number($("#lab-delay").value),
+    size_kb: Number($("#lab-size").value),
+    buffer: Number($("#lab-buffer").value),
+    seed: Math.max(0, Math.min(2147483647, Math.trunc(Number($("#lab-seed").value) || 0))),
+  };
+}
+
+function setLabControls(values) {
+  $("#lab-loss").value = values.loss;
+  $("#lab-delay").value = values.delay;
+  $("#lab-size").value = values.size;
+  $("#lab-buffer").value = values.buffer;
+  if (values.seed !== undefined) $("#lab-seed").value = values.seed;
+  updateLabOutputs();
+}
+
+function updateLabOutputs() {
+  $("#lab-loss-out").textContent = `${$("#lab-loss").value}%`;
+  $("#lab-delay-out").textContent = `${$("#lab-delay").value} ms`;
+  $("#lab-size-out").textContent = `${$("#lab-size").value} KB`;
+  $("#lab-buffer-out").textContent = `${$("#lab-buffer").value} ${t("lab_unit_packets")}`;
+}
+
+function renderLabPresets() {
+  const box = $("#lab-presets");
+  box.replaceChildren();
+  for (const key of Object.keys(PRESETS)) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip";
+    button.textContent = t(`preset_${key}`);
+    button.setAttribute("aria-pressed", String(labState.preset === key));
+    button.addEventListener("click", () => {
+      labState.preset = key;
+      setLabControls(PRESETS[key]);
+      renderLabPresets();
+      runLab();
+    });
+    box.append(button);
+  }
+}
+
+function renderLabNotes() {
+  $("#lab-notes").replaceChildren(...t("lab_notes").map((line) => {
+    const item = document.createElement("li");
+    item.textContent = line;
+    return item;
+  }));
+}
+
+function renderLabLegend() {
+  const legend = $("#lab-legend");
+  const items = [
+    ["line--rudp", "lab_legend_cwnd", "solid"], ["line--ssthresh", "lab_legend_ssthresh", "dashed"],
+    ["line--rwnd", "lab_legend_rwnd", "dotted"], ["mark--loss", "lab_legend_loss", "solid"],
+    ["mark--timeout", "lab_legend_timeout", "solid"], ["mark--fast", "lab_legend_fast", "dashed"],
+  ];
+  const sample = { "line--rudp": "var(--brand)", "line--ssthresh": "var(--ink-faint)",
+                   "line--rwnd": "var(--success)", "mark--loss": "var(--danger)",
+                   "mark--timeout": "var(--danger)", "mark--fast": "var(--warm)" };
+  legend.replaceChildren(...items.map(([cls, key, style]) => {
+    const span = document.createElement("span");
+    const swatch = document.createElement("i");
+    swatch.style.borderTopColor = sample[cls];
+    swatch.style.borderTopStyle = style;
+    span.append(swatch, document.createTextNode(t(key)));
+    return span;
+  }));
+}
+
+async function runLab() {
+  const button = $("#lab-run");
+  button.disabled = true;
+  button.classList.add("is-loading");
+  $("#lab-error").hidden = true;
+  try {
+    const params = labParams();
+    const body = await api("api/lab", { method: "POST", body: JSON.stringify(params) });
+    labState.result = body;
+    labState.ran = true;
+    writeLabHash(params);
+    renderLabResult();
+    playLab();
+  } catch (failure) {
+    const box = $("#lab-error");
+    box.textContent = failure.message || t("lab_error");
+    box.hidden = false;
+  } finally {
+    button.disabled = false;
+    button.classList.remove("is-loading");
+  }
+}
+
+// ----- the chart
+function niceStep(max, wanted) {
+  const raw = max / wanted;
+  const power = 10 ** Math.floor(Math.log10(raw));
+  for (const m of [1, 2, 5, 10]) if (m * power >= raw) return m * power;
+  return 10 * power;
+}
+
+const GEOMETRY = { w: 640, h: 220, left: 46, right: 12, top: 12, bottom: 34 };
+
+function drawChart(svg, run, scale, upTo, kind, buffer) {
+  const g = GEOMETRY;
+  const plotW = g.w - g.left - g.right;
+  const plotH = g.h - g.top - g.bottom;
+  const x = (ms) => g.left + (ms / scale.xMax) * plotW;
+  const y = (v) => g.top + plotH - (v / scale.yMax) * plotH;
+  const parts = [];
+
+  // grid and axes
+  const yStep = niceStep(scale.yMax, 5);
+  for (let v = 0; v <= scale.yMax; v += yStep) {
+    parts.push(svgEl("line", { class: v === 0 ? "axis" : "grid-line", x1: g.left, x2: g.w - g.right, y1: y(v), y2: y(v) }));
+    parts.push(svgEl("text", { class: "tick-label", x: g.left - 6, y: y(v) + 4, "text-anchor": "end" }, String(v)));
+  }
+  const xStep = niceStep(scale.xMax / 1000, 6);
+  for (let s = 0; s * 1000 <= scale.xMax; s += xStep) {
+    parts.push(svgEl("line", { class: "axis", x1: x(s * 1000), x2: x(s * 1000), y1: y(0), y2: y(0) + 4 }));
+    parts.push(svgEl("text", { class: "tick-label", x: x(s * 1000), y: y(0) + 17, "text-anchor": "middle" }, String(Math.round(s * 100) / 100)));
+  }
+  parts.push(svgEl("text", { class: "axis-title", x: g.left + plotW / 2, y: g.h - 4, "text-anchor": "middle" }, t("lab_axis_time")));
+  parts.push(svgEl("text", { class: "axis-title", x: 4, y: 10 }, t("lab_axis_cwnd")));
+
+  // the receiver's limit
+  if (buffer <= scale.yMax) {
+    parts.push(svgEl("line", { class: "line line--rwnd", x1: g.left, x2: g.w - g.right, y1: y(buffer), y2: y(buffer) }));
+  }
+
+  // events up to now: losses along the floor, timeouts and fast retransmits as verticals
+  for (const mark of run.marks) {
+    if (mark.t > upTo) break;
+    if (mark.kind === "loss" || mark.kind === "ack_loss") {
+      parts.push(svgEl("line", { class: mark.kind === "loss" ? "mark--loss" : "mark--ackloss",
+        x1: x(mark.t), x2: x(mark.t), y1: y(0), y2: y(0) - 9 }));
+    } else if (mark.kind === "timeout" || mark.kind === "fast_retransmit") {
+      parts.push(svgEl("line", { class: mark.kind === "timeout" ? "mark--timeout" : "mark--fast",
+        x1: x(mark.t), x2: x(mark.t), y1: y(0), y2: g.top }));
+    }
+  }
+
+  // ssthresh, then the window on top of it
+  const visible = run.series.filter((p) => p.t <= upTo);
+  if (visible.length) {
+    parts.push(svgEl("polyline", { class: "line line--ssthresh",
+      points: visible.map((p) => `${x(p.t).toFixed(1)},${y(Math.min(p.ssthresh, scale.yMax)).toFixed(1)}`).join(" ") }));
+    parts.push(svgEl("polyline", { class: `line line--${kind}`,
+      points: visible.map((p) => `${x(p.t).toFixed(1)},${y(p.cwnd).toFixed(1)}`).join(" ") }));
+    const head = visible[visible.length - 1];
+    parts.push(svgEl("circle", { class: `head-dot--${kind}`, cx: x(head.t), cy: y(head.cwnd), r: 4 }));
+  }
+  if (!run.completed && upTo >= run.duration_ms) {
+    const label = t("lab_gave_up_at", (run.duration_ms / 1000).toFixed(1));
+    const atX = x(run.duration_ms);
+    const flip = atX > g.w * 0.7;
+    parts.push(svgEl("text", { class: "chart-note", x: flip ? atX - 6 : atX + 6, y: g.top + 14,
+      "text-anchor": flip ? "end" : "start" }, label));
+  }
+  svg.replaceChildren(...parts);
+}
+
+function chartScale(runs) {
+  const list = Object.values(runs);
+  const xMax = Math.max(...list.map((r) => r.duration_ms), 100);
+  const yMax = Math.max(22, ...list.flatMap((r) => r.series.map((p) => p.cwnd)));
+  return { xMax: xMax * 1.02, yMax: Math.ceil(yMax / 2) * 2 };
+}
+
+function drawAll(upTo) {
+  const { runs, params } = labState.result;
+  const scale = chartScale(runs);
+  if (runs.RUDP) drawChart($("#chart-rudp"), runs.RUDP, scale, upTo, "rudp", params.buffer);
+  if (runs.TCP) drawChart($("#chart-tcp"), runs.TCP, scale, upTo, "tcp", params.buffer);
+  return scale.xMax;
+}
+
+function playLab() {
+  cancelAnimationFrame(labState.frame);
+  const { runs } = labState.result;
+  const total = chartScale(runs).xMax;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) { drawAll(total); return; }
+
+  const duration = 3200;
+  const started = performance.now();
+  const step = (now) => {
+    const progress = Math.min(1, (now - started) / duration);
+    drawAll(total * progress);
+    if (progress < 1) labState.frame = requestAnimationFrame(step);
+  };
+  labState.frame = requestAnimationFrame(step);
+}
+
+// ----- the numbers
+function fmtSeconds(ms) { return `${(ms / 1000).toFixed(ms >= 10000 ? 1 : 2)} s`; }
+
+function labSummary(runs) {
+  const rudp = runs.RUDP, tcp = runs.TCP;
+  if (!rudp || !tcp) return "";
+  const gaveUp = (run, who) => t("lab_gaveup", who, (run.duration_ms / 1000).toFixed(1));
+
+  if (rudp.completed && tcp.completed) {
+    const ratio = tcp.duration_ms / rudp.duration_ms;
+    if (Math.abs(ratio - 1) < 0.03) return t("lab_same");
+    const [fast, slow, nf, ns, x] = ratio > 1
+      ? [rudp, tcp, "lab_name_rudp", "lab_name_tcp", ratio]
+      : [tcp, rudp, "lab_name_tcp", "lab_name_rudp", 1 / ratio];
+    return t("lab_faster", t(nf), t(ns), x.toFixed(2));
+  }
+  if (!rudp.completed && !tcp.completed) return t("lab_both_failed");
+  return !rudp.completed ? gaveUp(rudp, t("lab_name_rudp")) : gaveUp(tcp, t("lab_name_tcp"));
+}
+
+function renderLabResult() {
+  if (!labState.result) return;
+  const { runs } = labState.result;
+  $("#lab-charts").hidden = false;
+  $("#lab-table-card").hidden = false;
+  $("#lab-summary").textContent = labSummary(runs);
+
+  $("#chart-rudp-title").textContent = t("lab_chart_rudp");
+  $("#chart-tcp-title").textContent = t("lab_chart_tcp");
+  const summary = labSummary(runs);
+  for (const key of ["rudp", "tcp"]) {
+    $(`#chart-${key}`).setAttribute("aria-label", `${t(`lab_chart_${key}`)}. ${summary}`);
+  }
+
+  const table = $("#lab-table");
+  const rows = [
+    ["m_status", (r) => t(r.completed ? "m_done" : "m_gaveup"), (r) => (r.completed ? "" : "bad")],
+    ["m_time", (r) => fmtSeconds(r.duration_ms), null, "duration_ms", "min"],
+    ["m_goodput", (r) => `${r.goodput_kbps} kbit/s`, null, "goodput_kbps", "max"],
+    ["m_sent", (r) => r.packets_sent],
+    ["m_retx", (r) => r.retransmissions],
+    ["m_timeouts", (r) => r.timeouts],
+    ["m_fast", (r) => r.fast_retransmits],
+    ["m_verified", (r) => (r.verified ? t("m_yes") : t("m_no")), (r) => (r.verified ? "" : "bad")],
+  ];
+  const head = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  for (const label of ["", "RUDP", "TCP Reno (model)"]) {
+    const th = document.createElement("th");
+    th.scope = "col";
+    th.textContent = label;
+    headRow.append(th);
+  }
+  head.append(headRow);
+
+  const body = document.createElement("tbody");
+  for (const [labelKey, format, tone, field, better] of rows) {
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.scope = "row";
+    th.textContent = t(labelKey);
+    tr.append(th);
+
+    let best = null;
+    if (field && runs.RUDP?.completed && runs.TCP?.completed) {
+      const a = runs.RUDP[field], b = runs.TCP[field];
+      if (a !== b) best = (better === "min" ? a < b : a > b) ? "RUDP" : "TCP";
+    }
+    for (const protocol of ["RUDP", "TCP"]) {
+      const run = runs[protocol];
+      const td = document.createElement("td");
+      td.className = `num ${tone ? tone(run) : ""} ${best === protocol ? "best" : ""}`.trim();
+      td.textContent = run ? String(format(run)) : "--";
+      tr.append(td);
+    }
+    body.append(tr);
+  }
+  table.replaceChildren(head, body);
+  drawAll(chartScale(runs).xMax);
+}
+
+// ----- sharing an experiment as a link
+function writeLabHash(params) {
+  const query = new URLSearchParams({
+    loss: Math.round(params.loss * 100), delay: params.delay_ms, size: params.size_kb,
+    buffer: params.buffer, seed: params.seed,
+  });
+  try { history.replaceState(null, "", `#lab?${query}`); } catch { /* ignore */ }
+}
+
+function readLabHash() {
+  if (!location.hash.startsWith("#lab")) return null;
+  const query = new URLSearchParams(location.hash.split("?")[1] || "");
+  const pick = (name, low, high, fallback) => {
+    const value = Number(query.get(name));
+    return query.has(name) && Number.isFinite(value) ? Math.min(high, Math.max(low, Math.trunc(value))) : fallback;
+  };
+  return {
+    loss: pick("loss", 0, 50, 5), delay: pick("delay", 1, 400, 40), size: pick("size", 1, 256, 64),
+    buffer: pick("buffer", 1, 64, 8), seed: pick("seed", 0, 2147483647, 1),
+  };
+}
+
+async function copyLabLink() {
+  try {
+    await navigator.clipboard.writeText(location.href);
+    const button = $("#lab-link");
+    button.textContent = t("lab_copied");
+    setTimeout(() => { button.textContent = t("lab_share"); }, 1600);
+  } catch { /* clipboard blocked */ }
+}
+
+function openLab() {
+  if (labState.ran) return;
+  const fromLink = readLabHash();
+  if (fromLink) setLabControls(fromLink);
+  else { labState.preset = "wifi"; setLabControls(PRESETS.wifi); renderLabPresets(); }
+  runLab();
+}
+
+function startLab() {
+  renderLabLegend();
+  renderLabNotes();
+  renderLabPresets();
+  updateLabOutputs();
+
+  $("#lab-form").addEventListener("submit", (event) => { event.preventDefault(); labState.preset = null; renderLabPresets(); runLab(); });
+  for (const name of LAB_FIELDS) {
+    const input = $(`#lab-${name}`);
+    input.addEventListener("input", updateLabOutputs);
+    // run when the slider is released, not on every pixel of the drag
+    input.addEventListener("change", () => { labState.preset = null; renderLabPresets(); runLab(); });
+  }
+  $("#lab-seed").addEventListener("change", runLab);
+  $("#lab-shuffle").addEventListener("click", () => {
+    $("#lab-seed").value = Math.floor(Math.random() * 1000000);
+    runLab();
+  });
+  $("#lab-replay").addEventListener("click", () => { if (labState.result) playLab(); });
+  $("#lab-link").addEventListener("click", copyLabLink);
+
+  // A shared link opened in a tab that is already loaded changes only the
+  // hash, which does not reload the page: follow it.
+  window.addEventListener("hashchange", () => {
+    const link = readLabHash();
+    if (!link) return;
+    setLabControls(link);
+    labState.preset = null;
+    renderLabPresets();
+    selectTab("tab-lab");
+    if (labState.ran) runLab();
+  });
+
+  if (location.hash.startsWith("#lab")) selectTab("tab-lab");
+}
+
 // ------------------------------------------------------------------ start
 function start() {
   applyTheme(store.get("theme", null));
@@ -542,6 +991,7 @@ function start() {
   $("#share").addEventListener("click", shareAdvice);
 
   applyLanguage();
+  startLab();
 }
 
 start();
