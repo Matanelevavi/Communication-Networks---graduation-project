@@ -114,6 +114,12 @@ def create_app(gateway: NetworkGateway | None = None,
     def health():
         return {"ok": True, "network": gateway.status}
 
+    @app.get("/api/whoami")          # TEMPORARY diagnostic, removed after use
+    def whoami(request: Request):
+        names = ("x-forwarded-for", "cf-connecting-ip", "true-client-ip", "x-real-ip")
+        return {"seen": {n: request.headers.get(n) for n in names},
+                "client": request.client.host if request.client else None}
+
     @app.post("/api/forecast")
     def forecast(body: ForecastRequest):
         profiles = [person.model_dump() for person in body.profiles]
