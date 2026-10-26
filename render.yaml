@@ -1,0 +1,13 @@
+# Render blueprint: New > Blueprint, then pick this repository.
+services:
+  - type: web
+    name: weatherwear
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: GEMINI_API_KEY      # optional; set it in the dashboard, never here
+        sync: false
+      - key: REQUESTS_PER_MINUTE
+        value: "30"

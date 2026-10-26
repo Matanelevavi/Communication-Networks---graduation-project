@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+venv
+.idea
+.vscode
+**/__pycache__
+**/*.pyc
+.env
+data/*
+!data/.gitkeep
+tests
+test_dummy_data

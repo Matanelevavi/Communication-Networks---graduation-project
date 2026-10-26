@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WeatherWear</title>
+  <meta name="description" content="Live weather and clothing advice for your whole family, delivered over a reliable UDP protocol built from scratch.">
+  <meta name="theme-color" content="#1b6fa8">
+  <meta property="og:title" content="WeatherWear — what to wear today">
+  <meta property="og:description" content="Live forecast and clothing advice for every member of the family.">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main" data-i18n="skip">Skip to content</a>
+
+  <header class="topbar">
+    <div class="wrap topbar__inner">
+      <a class="brand" href="./" aria-label="WeatherWear">
+        <img src="icon.svg" alt="" width="32" height="32">
+        <span>WeatherWear</span>
+      </a>
+      <nav class="tabs" role="tablist" aria-label="Sections">
+        <button class="tab" role="tab" id="tab-forecast" aria-controls="panel-forecast" aria-selected="true" data-i18n="tab_forecast">Forecast</button>
+        <button class="tab" role="tab" id="tab-archive" aria-controls="panel-archive" aria-selected="false" tabindex="-1" data-i18n="tab_archive">Archive</button>
+        <button class="tab" role="tab" id="tab-how" aria-controls="panel-how" aria-selected="false" tabindex="-1" data-i18n="tab_how">How it works</button>
+      </nav>
+      <div class="toolbar">
+        <button class="icon-btn" id="lang-toggle" type="button" aria-label="Language">EN</button>
+        <button class="icon-btn" id="theme-toggle" type="button" aria-label="Theme">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="wrap">
+    <!-- ======================================================= forecast -->
+    <section id="panel-forecast" role="tabpanel" aria-labelledby="tab-forecast">
+      <div class="hero">
+        <h1 data-i18n="hero_title">What should everyone wear today?</h1>
+        <p class="lede" data-i18n="hero_lede">Live weather, and advice written for each person in your family.</p>
+      </div>
+
+      <div class="layout">
+        <form id="forecast-form" class="card form" novalidate>
+          <div class="field">
+            <label for="city" data-i18n="city">City</label>
+            <div class="input-row">
+              <input id="city" name="city" type="text" autocomplete="address-level2" maxlength="80" required dir="auto">
+            </div>
+            <div class="chips" id="city-chips" aria-label="Suggestions"></div>
+          </div>
+
+          <fieldset class="field">
+            <legend data-i18n="family">Who is it for</legend>
+            <p class="hint" data-i18n="family_hint">Saved on this device only.</p>
+            <ul class="people" id="people"></ul>
+            <button type="button" class="btn btn--ghost" id="add-person">
+              <span aria-hidden="true">＋</span> <span data-i18n="add_person">Add a person</span>
+            </button>
+          </fieldset>
+
+          <fieldset class="field">
+            <legend data-i18n="transport">Transport</legend>
+            <div class="segmented" role="radiogroup">
+              <label><input type="radio" name="protocol" value="RUDP" checked><span>RUDP</span></label>
+              <label><input type="radio" name="protocol" value="TCP"><span>TCP</span></label>
+            </div>
+            <p class="hint" id="protocol-hint" data-i18n="protocol_hint_rudp">Our own reliable protocol over UDP.</p>
+          </fieldset>
+
+          <button class="btn btn--primary" id="submit" type="submit">
+            <span class="spinner" aria-hidden="true"></span>
+            <span data-i18n="submit">Get my forecast</span>
+          </button>
+        </form>
+
+        <div class="result" id="result" aria-live="polite">
+          <div class="placeholder card" id="placeholder">
+            <div class="placeholder__art" aria-hidden="true">⛅</div>
+            <p data-i18n="placeholder">Pick a city to see the forecast and what to wear.</p>
+          </div>
+
+          <div class="alert" id="error" role="alert" hidden></div>
+
+          <article class="card forecast" id="forecast" hidden>
+            <header class="forecast__head">
+              <div>
+                <h2 id="fc-city"></h2>
+                <p class="muted" data-i18n="next_24">Next 24 hours</p>
+              </div>
+              <div class="forecast__icon" id="fc-icon" aria-hidden="true"></div>
+            </header>
+
+            <div class="now">
+              <span class="now__label" data-i18n="now">Now</span>
+              <span class="now__temp" id="fc-now"></span>
+            </div>
+
+            <div class="range" aria-hidden="true"><span class="range__fill" id="fc-range"></span></div>
+
+            <dl class="stats">
+              <div class="stat"><dt data-i18n="low">Low</dt><dd id="fc-low" class="cool"></dd></div>
+              <div class="stat"><dt data-i18n="high">High</dt><dd id="fc-high" class="warm"></dd></div>
+              <div class="stat"><dt data-i18n="rain">Rain</dt><dd id="fc-rain"></dd></div>
+            </dl>
+            <div class="rain-hours" id="fc-rain-hours"></div>
+
+            <section class="advice">
+              <div class="advice__head">
+                <h3 data-i18n="what_to_wear">What to wear</h3>
+                <span class="badge" id="fc-source"></span>
+              </div>
+              <p id="fc-advice" dir="auto"></p>
+              <div class="actions">
+                <button class="btn btn--ghost btn--small" type="button" id="copy" data-i18n="copy">Copy</button>
+                <button class="btn btn--ghost btn--small" type="button" id="share" data-i18n="share">Share</button>
+              </div>
+            </section>
+
+            <details class="wire" id="wire">
+              <summary data-i18n="under_the_hood">Under the hood</summary>
+              <dl class="wire__grid" id="wire-grid"></dl>
+              <p class="hint" id="wire-note"></p>
+            </details>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================== archive -->
+    <section id="panel-archive" role="tabpanel" aria-labelledby="tab-archive" hidden>
+      <div class="hero">
+        <h1 data-i18n="archive_title">The archive</h1>
+        <p class="lede" data-i18n="archive_lede">Forecasts and hourly reports saved by the server, fetched FTP style over the transport you choose.</p>
+      </div>
+      <div class="layout layout--archive">
+        <div class="card">
+          <div class="archive__bar">
+            <button class="btn btn--ghost btn--small" type="button" id="archive-refresh" data-i18n="refresh">Refresh</button>
+            <span class="muted" id="archive-meta"></span>
+          </div>
+          <ul class="files" id="files"></ul>
+        </div>
+        <div class="card viewer">
+          <h2 id="viewer-title" data-i18n="viewer_empty">Choose a file</h2>
+          <pre id="viewer" dir="auto" tabindex="0"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================== how it works -->
+    <section id="panel-how" role="tabpanel" aria-labelledby="tab-how" hidden>
+      <div class="hero">
+        <h1 data-i18n="how_title">How a forecast reaches you</h1>
+        <p class="lede" data-i18n="how_lede">This site is a host on a small simulated network. Each request takes the path a new machine takes when it joins one.</p>
+      </div>
+      <ol class="steps">
+        <li class="card step"><span class="step__n">1</span><h3>DHCP</h3><p data-i18n="how_dhcp">The site asks for an address: Discover, Offer, Request, Acknowledge. A backup server answers if the primary is down.</p></li>
+        <li class="card step"><span class="step__n">2</span><h3>DNS</h3><p data-i18n="how_dns">It resolves weatherwear.local through a local DNS server, and caches the answer for the TTL the server sets.</p></li>
+        <li class="card step"><span class="step__n">3</span><h3>TCP / RUDP</h3><p data-i18n="how_transport">Your request travels over TCP, or over RUDP: sequence numbers, CRC32, retransmission, congestion control and flow control, written from scratch on top of UDP.</p></li>
+        <li class="card step"><span class="step__n">4</span><h3 data-i18n="how_app_title">App server</h3><p data-i18n="how_app">The server fetches live weather from Open-Meteo, and writes advice for each person, with Gemini when a key is set and with local rules otherwise.</p></li>
+      </ol>
+      <div class="card status" id="status">
+        <h2 data-i18n="status_title">Network status</h2>
+        <dl class="wire__grid" id="status-grid"></dl>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer__inner">
+      <span data-i18n="footer">A computer networks graduation project.</span>
+      <a href="https://github.com/Matanelevavi/Communication-Networks---graduation-project" rel="noopener" target="_blank">GitHub</a>
+      <a href="api/docs" data-i18n="api">API</a>
+      <span class="muted" data-i18n="weather_credit">Weather data: Open-Meteo</span>
+    </div>
+  </footer>
+
+  <template id="person-template">
+    <li class="person">
+      <input class="person__name" type="text" maxlength="40" dir="auto" autocomplete="off">
+      <select class="person__age"></select>
+      <input class="person__notes" type="text" maxlength="40" dir="auto" autocomplete="off">
+      <button type="button" class="icon-btn person__remove">✕</button>
+    </li>
+  </template>
+</body>
+</html>

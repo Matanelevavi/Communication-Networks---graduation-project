@@ -16,7 +16,35 @@ numbers, so the app is fully usable with no configuration at all.
 There is also a small FTP style archive of past forecasts and raw hourly
 reports.
 
-## Running it
+## The website
+
+```bash
+pip install -r requirements.txt
+python -m src.web.serve          # then open http://127.0.0.1:8000
+```
+
+The website is in Hebrew and English (right to left included), works on a
+phone, has a dark mode, and keeps the family you describe on your own device.
+Every answer comes with an **Under the hood** panel: which transport carried
+it, how many datagrams arrived, how many were duplicates or failed their CRC.
+
+A browser cannot speak RUDP, and the RUDP port must never face the internet: a
+small request that triggers a large answer is exactly what a reflection attack
+needs. So the website is **one more host on the simulated network**. It joins
+through DHCP, resolves the application server through DNS, and carries each
+visitor's request over real TCP or real RUDP on loopback. Only HTTP is exposed.
+
+```
+browser --HTTPS--> FastAPI gateway --DHCP/DNS/TCP/RUDP over loopback--> servers
+                   (rate limited,                                       (unchanged)
+                    validated, CSP)
+```
+
+It deploys as one Docker container. On Render: **New > Blueprint**, pick this
+repository, and `render.yaml` does the rest. `GEMINI_API_KEY` is optional and
+is set in the dashboard, never in the repository.
+
+## Running the desktop client
 
 ```bash
 pip install -r requirements.txt
@@ -78,7 +106,7 @@ collide with services the operating system already runs.
 
 ## Layout
 
-Each module has one job. 39 modules, averaging 99 lines, none over 211.
+Each module has one job.
 
 ```
 run.py                                launcher with a port readiness check
@@ -125,7 +153,14 @@ src/servers/
   app_server/file_archive.py          list, read, render a CSV as a table
   app_server/storage.py               guarded access to the data directory
 
-tests/                                275 unit tests, one file per module
+src/web/                              the website, one more host on the network
+  gateway.py                          joins over DHCP/DNS, relays over TCP/RUDP
+  app.py                              FastAPI: validation, headers, the API
+  limits.py                           a per visitor rate limit
+  serve.py                            starts every server, then the website
+  static/                             the bilingual interface, no build step
+
+tests/                                unit tests, one file per module
 ```
 
 Three design decisions are worth pointing at:
@@ -217,12 +252,14 @@ an address nobody will claim.
 ## Tests
 
 ```bash
+pip install -r requirements-dev.txt
 python -m unittest discover -s tests -t .
 ```
 
-275 unit tests covering the DHCP lease state machine, DNS answers, RUDP framing,
+337 unit tests covering the DHCP lease state machine, DNS answers, RUDP framing,
 congestion control and flow control, TCP message framing, storage, the advisor
-fallback and the external API clients. They use mocked sockets, so no server has
+fallback, the external API clients, and the website's gateway, rate limit,
+input validation and security headers. They use mocked sockets, so no server has
 to be running and nothing touches the network.
 
 Ten of them check the interface: that every window fits on the screen it is
