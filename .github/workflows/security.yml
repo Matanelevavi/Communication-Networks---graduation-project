@@ -41,9 +41,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t weatherwear:scan .
-      - uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: weatherwear:scan
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: "1"
+      # Trivy runs from its own image rather than through a third party action,
+      # so there is one less thing in the pipeline that can change under us.
+      - run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.57.1 image --severity CRITICAL,HIGH \
+            --ignore-unfixed --exit-code 1 --no-progress weatherwear:scan
