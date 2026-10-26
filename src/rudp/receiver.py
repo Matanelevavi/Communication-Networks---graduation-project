@@ -36,8 +36,24 @@ class RudpReceiver:
         self.total: int | None = None
         self.sender_addr: Address | None = None
 
-    def receive(self) -> bytes | None:
-        """Block until the whole payload has arrived, or the transfer stalls."""
+        # counters, so the interface can show what the transfer went through
+        self.datagrams = 0
+        self.duplicates = 0
+        self.corrupted = 0
+
+    def stats(self) -> dict:
+        return {"chunks": self.total or 0, "datagrams": self.datagrams,
+                "duplicates": self.duplicates, "corrupted": self.corrupted}
+
+    def receive(self, linger: bool = True) -> bytes | None:
+        """
+        Block until the whole payload has arrived, or the transfer stalls.
+
+        With ``linger=False`` the payload is returned the moment it is
+        complete, and the caller runs :meth:`linger` itself, typically on a
+        thread: otherwise every answer waits ``RUDP_LINGER`` seconds for
+        retransmissions that almost never come.
+        """
         log.info("[RUDP] Waiting for chunks")
         self.sock.settimeout(self.timeout)
 
@@ -49,14 +65,18 @@ class RudpReceiver:
 
             if not self._is_expected_sender(src):
                 continue
+            self.datagrams += 1
 
             packet = RudpPacket.from_bytes(raw)
             if packet is None:
+                self.corrupted += 1
                 log.warning("[RUDP] Corrupted or malformed packet dropped")
                 continue
 
             self.total = packet.total
             first_time = not self.buffer.has_seen(packet.seq)
+            if not first_time:
+                self.duplicates += 1
 
             # A chunk the buffer has no room for is left unacknowledged on
             # purpose: the sender will resend it once the window reopens.
@@ -72,7 +92,8 @@ class RudpReceiver:
             self._acknowledge(packet.seq)
 
             if self.is_complete():
-                self._linger()
+                if linger:
+                    self.linger()
                 payload = self.buffer.payload()
                 log.info(f"[RUDP] Transfer complete, {len(payload)} bytes")
                 return payload
@@ -117,7 +138,7 @@ class RudpReceiver:
     def is_complete(self) -> bool:
         return self.total is not None and self.buffer.is_complete(self.total)
 
-    def _linger(self) -> None:
+    def linger(self) -> None:
         """
         Keep answering retransmissions briefly after the last chunk.
 

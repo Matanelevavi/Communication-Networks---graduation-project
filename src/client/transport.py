@@ -13,6 +13,7 @@ The difference between them is exactly the point of the project:
 """
 import logging
 import socket
+import threading
 from abc import ABC, abstractmethod
 
 from src.config import (APP_PORT, BUFF_SIZE, ENCODING, HANDSHAKE_ACK,
@@ -32,6 +33,8 @@ class Transport(ABC):
 
     def __init__(self, server_ip: str, port: int = APP_PORT) -> None:
         self.server = (server_ip, port)
+        # what the last request went through on the wire, for the interface
+        self.stats: dict = {}
 
     @abstractmethod
     def request(self, payload: str) -> str | bytes | None:
@@ -97,13 +100,31 @@ class RudpTransport(Transport):
 
     def request(self, payload: str) -> str | bytes | None:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            if not self._handshake(sock, payload):
-                log.error("[RUDP] Server unreachable")
-                return None
+        if not self._handshake(sock, payload):
+            log.error("[RUDP] Server unreachable")
+            sock.close()
+            return None
 
-            answer = RudpReceiver(sock).receive()
-            return self.decode(answer) if answer is not None else None
+        receiver = RudpReceiver(sock)
+        answer = receiver.receive(linger=False)
+        self.stats = receiver.stats()
+
+        if answer is None:
+            sock.close()
+            return None
+
+        # The answer is complete, so the user gets it now. The socket stays
+        # open a little longer on its own thread, to re-acknowledge the last
+        # chunk if its ACK was lost; that used to add half a second to every
+        # single RUDP request.
+        threading.Thread(target=self._linger_then_close, args=(receiver, sock),
+                         daemon=True).start()
+        return self.decode(answer)
+
+    @staticmethod
+    def _linger_then_close(receiver: RudpReceiver, sock) -> None:
+        try:
+            receiver.linger()
         finally:
             sock.close()
 

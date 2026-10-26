@@ -1,4 +1,6 @@
 import socket
+import threading
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -105,6 +107,35 @@ class TestRudpTransport(unittest.TestCase):
         socket_class.return_value.recvfrom.side_effect = socket.timeout
 
         self.assertIsNone(RudpTransport(SERVER_IP).request("{}"))
+        socket_class.return_value.close.assert_called_once()
+
+    def test_the_answer_does_not_wait_for_the_linger(self, socket_class):
+        """Lingering inline used to add half a second to every RUDP request."""
+        lingering = threading.Event()
+        release = threading.Event()
+
+        def linger_read(_size):
+            lingering.set()
+            release.wait(5)
+            raise socket.timeout()
+
+        sock = socket_class.return_value
+        responses = iter([(HANDSHAKE_ACK, SERVER),
+                          (RudpPacket(1, 1, b"advice").to_bytes(), TRANSFER)])
+        sock.recvfrom.side_effect = lambda size: next(responses, None) or linger_read(size)
+
+        answer = RudpTransport(SERVER_IP).request("{}")
+
+        self.assertEqual(answer, "advice")
+        self.assertTrue(lingering.wait(2))           # still re-acknowledging
+        sock.close.assert_not_called()
+
+        release.set()
+        for _ in range(100):
+            if sock.close.called:
+                break
+            time.sleep(0.02)
+        sock.close.assert_called_once()              # and closed once done
 
 
 if __name__ == "__main__":
