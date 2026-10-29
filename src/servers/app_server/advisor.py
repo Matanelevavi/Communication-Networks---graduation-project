@@ -39,14 +39,20 @@ class ClothingAdvisor:
         self.ai = ai if ai is not None else AiAdvisor()
         self.local = local if local is not None else LocalAdvisor()
 
-    def recommend(self, forecast: Forecast, profiles) -> Advice:
-        """Never raises for a service failure: that is what the fallback is for."""
+    def recommend(self, forecast: Forecast, profiles, language: str | None = None) -> Advice:
+        """
+        Never raises for a service failure: that is what the fallback is for.
+
+        ``language`` is what the page is shown in, when it says. Without it each
+        advisor guesses from what the user typed.
+        """
+        hint = {} if language is None else {"language": language}
         if self.ai.is_configured:
             try:
-                return Advice(self.ai.recommend(forecast, profiles), AI)
+                return Advice(self.ai.recommend(forecast, profiles, **hint), AI)
             except ServiceError as e:
                 # A bad key, an exhausted quota or an outage: say so once and
                 # carry on with the local rules rather than failing the request.
                 log.warning(f"AI advisor unavailable ({e}), using the local advisor")
 
-        return Advice(self.local.recommend(forecast, profiles), LOCAL)
+        return Advice(self.local.recommend(forecast, profiles, **hint), LOCAL)

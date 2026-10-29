@@ -13,10 +13,10 @@ import os
 from contextlib import asynccontextmanager
 from typing import Literal
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from src.config import MAX_PROFILE_FIELD, MAX_PROFILES
 from src.lab import runner as lab
@@ -28,6 +28,7 @@ log = logging.getLogger(__name__)
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 REQUESTS_PER_MINUTE = int(os.environ.get("REQUESTS_PER_MINUTE", 30))
 LAB_REQUESTS_PER_MINUTE = int(os.environ.get("LAB_REQUESTS_PER_MINUTE", 60))
+SEARCH_REQUESTS_PER_MINUTE = int(os.environ.get("SEARCH_REQUESTS_PER_MINUTE", 90))
 # On Render the request passes Cloudflare and then Render's own proxy, so the
 # peer address is always 127.0.0.1 and X-Forwarded-For reads
 #     <visitor>, <cloudflare edge>, <render proxy>
@@ -69,9 +70,21 @@ class Person(BaseModel):
 
 
 class ForecastRequest(BaseModel):
-    city: str = Field(min_length=1, max_length=80)
+    """A forecast for a typed name, a chosen place, or a position the browser shared."""
+    city: str = Field(default="", max_length=80)
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lon: float | None = Field(default=None, ge=-180, le=180)
+    lang: Literal["he", "en"] | None = None
     profiles: list[Person] = Field(default_factory=list, max_length=MAX_PROFILES)
     protocol: Protocol = "RUDP"
+
+    @model_validator(mode="after")
+    def needs_a_place(self):
+        if (self.lat is None) != (self.lon is None):
+            raise ValueError("lat and lon go together")
+        if not self.city.strip() and self.lat is None:
+            raise ValueError("send a city, or coordinates")
+        return self
 
 
 class LabRequest(BaseModel):
@@ -105,13 +118,18 @@ def visitor(request: Request) -> str:
 
 def create_app(gateway: NetworkGateway | None = None,
                limiter: RateLimiter | None = None,
-               lab_limiter: RateLimiter | None = None) -> FastAPI:
+               lab_limiter: RateLimiter | None = None,
+               search_limiter: RateLimiter | None = None) -> FastAPI:
     gateway = gateway or NetworkGateway()
     limiter = limiter or RateLimiter(REQUESTS_PER_MINUTE)
     # The lab calls no outside service and costs a few milliseconds, so it gets
     # a more generous budget of its own, which also keeps experimenting with
     # the sliders from using up the budget for real forecasts.
     lab_limiter = lab_limiter or RateLimiter(LAB_REQUESTS_PER_MINUTE)
+    # Typing a city sends a few lookups, each answered from a cache when it can
+    # be, so suggestions get a budget of their own as well: they must neither
+    # be starved by forecasts nor starve them.
+    search_limiter = search_limiter or RateLimiter(SEARCH_REQUESTS_PER_MINUTE)
 
     @asynccontextmanager
     async def lifespan(_app):
@@ -139,7 +157,8 @@ def create_app(gateway: NetworkGateway | None = None,
         if path.startswith("/api/") and path not in ("/api/health",) \
                 and not path.startswith(("/api/docs", "/api/openapi")):
             key = visitor(request)
-            budget = lab_limiter if path == "/api/lab" else limiter
+            budget = (lab_limiter if path == "/api/lab"
+                      else search_limiter if path == "/api/search" else limiter)
             if not budget.allow(key):
                 response = error(429, "Too many requests, please wait a moment.")
                 response.headers["Retry-After"] = str(budget.retry_after(key))
@@ -163,8 +182,13 @@ def create_app(gateway: NetworkGateway | None = None,
     @app.post("/api/forecast")
     def forecast(body: ForecastRequest):
         profiles = [person.model_dump() for person in body.profiles]
+        # Optional pieces go as keywords only when present, so a plain city
+        # request is exactly the call it always was.
+        extra = {key: value for key, value in
+                 (("lat", body.lat), ("lon", body.lon), ("lang", body.lang))
+                 if value is not None}
         try:
-            card, exchange = gateway.forecast(body.city.strip(), profiles, body.protocol)
+            card, exchange = gateway.forecast(body.city.strip(), profiles, body.protocol, **extra)
         except GatewayError as e:
             log.error(f"Forecast failed on the network: {e}")
             return error(503, "The service is not reachable right now.")
@@ -173,6 +197,17 @@ def create_app(gateway: NetworkGateway | None = None,
             return error(422, exchange.error_message or "Unexpected answer from the server.",
                          exchange.transfer())
         return {"forecast": card, "transfer": exchange.transfer()}
+
+    @app.get("/api/search")
+    def search(q: str = Query(min_length=2, max_length=60), protocol: Protocol = "TCP"):
+        """Places that match what has been typed, for the suggestion list."""
+        try:
+            places, exchange = gateway.search(q.strip(), protocol)
+        except GatewayError:
+            return error(503, "The service is not reachable right now.")
+        if exchange.is_error:
+            return error(502, exchange.error_message, exchange.transfer())
+        return {"places": places}
 
     @app.post("/api/lab")
     def run_lab(body: LabRequest):

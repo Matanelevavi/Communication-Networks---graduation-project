@@ -174,6 +174,39 @@ class TestForecastApi(ApiTestCase):
         self.assertEqual(response.status_code, 503)
         self.assertNotIn("no answer", response.text)      # no internals
 
+    def test_a_position_the_browser_shared_goes_as_coordinates_with_the_language(self):
+        self.gateway.forecast.return_value = (CARD, self.exchange(json.dumps(CARD)))
+
+        response = self.client.post("/api/forecast", json={
+            "lat": 32.1065, "lon": 35.18449, "lang": "he", "protocol": "TCP"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.gateway.forecast.call_args[0][0], "")
+        self.assertEqual(self.gateway.forecast.call_args[1],
+                         {"lat": 32.1065, "lon": 35.18449, "lang": "he"})
+
+    def test_a_chosen_place_keeps_its_name_beside_its_coordinates(self):
+        self.gateway.forecast.return_value = (CARD, self.exchange(json.dumps(CARD)))
+
+        self.post(lat=32.1, lon=35.2)
+
+        self.assertEqual(self.gateway.forecast.call_args[0][0], "Ariel")
+        self.assertEqual(self.gateway.forecast.call_args[1], {"lat": 32.1, "lon": 35.2})
+
+    def test_a_plain_city_request_is_still_exactly_the_old_call(self):
+        self.gateway.forecast.return_value = (CARD, self.exchange(json.dumps(CARD)))
+
+        self.post()
+
+        self.assertEqual(self.gateway.forecast.call_args[1], {})
+
+    def test_bad_places_are_refused_before_the_network(self):
+        for body in ({"lat": 32.1}, {"lon": 35.2}, {"lat": 91, "lon": 0}, {"lat": 0, "lon": -181},
+                     {"city": "", "profiles": []}, {"lat": "north", "lon": 1},
+                     {"city": "Ariel", "lang": "fr"}):
+            self.assertEqual(self.client.post("/api/forecast", json=body).status_code, 422, body)
+        self.gateway.forecast.assert_not_called()
+
     def test_input_is_validated_before_it_reaches_the_network(self):
         for body in ({"city": ""}, {"city": "x" * 81},
                      {"city": "Ariel", "protocol": "SCTP"},
@@ -183,6 +216,45 @@ class TestForecastApi(ApiTestCase):
             self.assertEqual(self.client.post("/api/forecast", json=body).status_code,
                              422, body)
         self.gateway.forecast.assert_not_called()
+
+
+class TestSearchApi(ApiTestCase):
+
+    PLACES = [{"name": "Ariel", "admin1": "Judea", "country": "Israel",
+               "latitude": 32.1, "longitude": 35.2}]
+
+    def test_suggestions(self):
+        self.gateway.search.return_value = (self.PLACES, self.exchange("{}"))
+
+        body = self.client.get("/api/search", params={"q": "Ariel"}).json()
+
+        self.assertEqual(body, {"places": self.PLACES})
+        self.gateway.search.assert_called_once_with("Ariel", "TCP")
+
+    def test_the_query_is_bounded_before_it_goes_anywhere(self):
+        for q in ("", "a", "x" * 61):
+            self.assertEqual(self.client.get("/api/search", params={"q": q}).status_code, 422, q)
+        self.assertEqual(self.client.get("/api/search").status_code, 422)
+        self.gateway.search.assert_not_called()
+
+    def test_an_unknown_transport_is_refused(self):
+        self.assertEqual(self.client.get("/api/search", params={"q": "Ariel", "protocol": "SCTP"}).status_code, 422)
+
+    def test_an_unreachable_network_is_a_503(self):
+        self.gateway.search.side_effect = GatewayError("no answer")
+
+        self.assertEqual(self.client.get("/api/search", params={"q": "Ariel"}).status_code, 503)
+
+    def test_suggestions_have_a_budget_of_their_own(self):
+        self.gateway.search.return_value = ([], self.exchange("{}"))
+        self.gateway.archive.return_value = ([], self.exchange(LISTING))
+        client = TestClient(create_app(self.gateway, RateLimiter(1), RateLimiter(1000),
+                                       RateLimiter(3)))
+
+        codes = [client.get("/api/search", params={"q": "Ariel"}).status_code for _ in range(4)]
+
+        self.assertEqual(codes, [200, 200, 200, 429])
+        self.assertEqual(client.get("/api/archive").status_code, 200)    # forecasts unaffected
 
 
 class TestArchiveApi(ApiTestCase):

@@ -190,6 +190,8 @@ class TestRequestHandling(unittest.TestCase):
     def router(folder):
         weather = MagicMock()
         weather.fetch.side_effect = Exception("the network is not reachable in a fuzz test")
+        weather.fetch_at.side_effect = Exception("the network is not reachable in a fuzz test")
+        weather.search.return_value = []
         agent = MagicMock()
         agent.cached_forecast.return_value = None
         agent.archived_file.return_value = "x"
@@ -207,6 +209,34 @@ class TestRequestHandling(unittest.TestCase):
             self.assertIn("fuzz test", str(e))
             return
         self.assertIsInstance(answer, (str, bytes))
+
+    @FUZZ
+    @given(JSON_VALUES | st.floats(), JSON_VALUES | st.floats())
+    def test_coordinates_reach_the_weather_service_only_when_they_are_real(self, lat, lon):
+        router = self.router(None)
+
+        try:
+            answer = router.handle({"action": "FORECAST", "city": "X", "lat": lat, "lon": lon})
+        except Exception as e:                    # fetch_at is rigged to fail when it is reached
+            self.assertIn("fuzz test", str(e))
+            answer = None
+
+        if router.weather.fetch_at.called:
+            _name, sent_lat, sent_lon = router.weather.fetch_at.call_args[0]
+            self.assertTrue(-90 <= sent_lat <= 90 and -180 <= sent_lon <= 180)
+            self.assertEqual((sent_lat, sent_lon), (round(sent_lat, 2), round(sent_lon, 2)))
+        else:
+            self.assertTrue(answer is None or isinstance(answer, str))
+
+    @FUZZ
+    @given(st.text(max_size=300))
+    def test_a_search_query_is_always_bounded_before_it_goes_upstream(self, query):
+        router = self.router(None)
+
+        router.handle({"action": "SEARCH", "query": query})
+
+        for call in router.weather.search.call_args_list:
+            self.assertTrue(2 <= len(call[0][0]) <= 60)
 
     @FUZZ
     @given(JSON_VALUES)

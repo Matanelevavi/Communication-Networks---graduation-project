@@ -53,6 +53,10 @@ PHRASES = {
         "adult": "{name} can go with the same, adjusted to taste.",
         "spare": " Worth packing a spare set for {notes}.",
         "everyone": "everyone",
+        "headline_here": "It is {word} today, {low}° to {high}°, so go with {clothing}.",
+        "uv": "The UV index peaks at {uv} today, so sunscreen and a hat matter.",
+        "wind": "It is windy, up to {wind} km/h, so a windproof layer will help.",
+        "feels": "It feels like {feels}° right now.",
     },
     HEBREW: {
         "headline": "ב{place} {word} היום, {low}° עד {high}°, אז כדאי ללבוש {clothing}.",
@@ -66,8 +70,16 @@ PHRASES = {
         "adult": "{name} יכול להתלבש אותו דבר, לפי הטעם.",
         "spare": " כדאי לארוז סט בגדים להחלפה עבור {notes}.",
         "everyone": "כולם",
+        "headline_here": "{word} היום, {low}° עד {high}°, אז כדאי ללבוש {clothing}.",
+        "uv": "מדד ה-UV מגיע היום ל-{uv}, אז קרם הגנה וכובע חשובים.",
+        "wind": "יש רוח, עד {wind} קמ\"ש, אז שכבה שחוסמת רוח תעזור.",
+        "feels": "זה מרגיש כמו {feels}° כרגע.",
     },
 }
+
+STRONG_UV = 6           # the index from which sun protection is called for
+WINDY_FROM = 30         # km/h
+FEELS_DIFFERENT = 4     # degrees between the air and how it feels before it is worth saying
 
 BIG_SWING = 10          # degrees between low and high that call for a layer
 STRONG_SUN = 27         # above this, sun protection is worth mentioning
@@ -80,8 +92,10 @@ CHILD_WORDS = {"child", "kid", "ילד", "ילדה"}
 class LocalAdvisor:
     """Builds a recommendation paragraph from the numbers in a forecast."""
 
-    def recommend(self, forecast: Forecast, profiles) -> str:
-        language = self.language_of(forecast, profiles)
+    def recommend(self, forecast: Forecast, profiles, language: str | None = None) -> str:
+        # The page says which language it is shown in, which is a better guide
+        # than guessing from a city typed in English by someone reading Hebrew.
+        language = language if language in PHRASES else self.language_of(forecast, profiles)
         say = PHRASES[language]
 
         parts = [self._headline(forecast, language)]
@@ -93,6 +107,8 @@ class LocalAdvisor:
         swing = self._swing(forecast, language)
         if swing:
             parts.append(swing)
+
+        parts.extend(self._conditions(forecast, language))
 
         parts.extend(self._per_person(forecast, profiles, language))
 
@@ -119,9 +135,32 @@ class LocalAdvisor:
 
     def _headline(self, forecast: Forecast, language: str) -> str:
         word, clothing = self.band(forecast.max_temp, language)
-        return PHRASES[language]["headline"].format(
-            place=forecast.place.name, word=word, clothing=clothing,
+        # A place shared by the browser has no name, so the sentence is about "today".
+        key = "headline" if forecast.place.name else "headline_here"
+        place = forecast.place.name
+        # Hebrew glues "in" to the name ("באריאל"); a name in Latin letters
+        # takes a hyphen, or the prefix runs into it ("בHaifa").
+        if language == HEBREW and place and ExternalService.is_english_only(place[0]):
+            place = f"-{place}"
+        return PHRASES[language][key].format(
+            place=place, word=word, clothing=clothing,
             low=f"{forecast.min_temp:g}", high=f"{forecast.max_temp:g}")
+
+    def _conditions(self, forecast: Forecast, language: str) -> list[str]:
+        """What the temperature alone does not say: sun, wind and how it feels."""
+        say = PHRASES[language]
+        notes = []
+        if (forecast.feels_like is not None and forecast.current_temp is not None
+                and abs(forecast.feels_like - forecast.current_temp) >= FEELS_DIFFERENT):
+            notes.append(say["feels"].format(feels=f"{forecast.feels_like:g}"))
+
+        wind = forecast.peak_wind_kmh
+        if wind >= WINDY_FROM:
+            notes.append(say["wind"].format(wind=f"{wind:.0f}"))
+
+        if (forecast.uv_max or 0) >= STRONG_UV:
+            notes.append(say["uv"].format(uv=f"{forecast.uv_max:.0f}"))
+        return notes
 
     @staticmethod
     def _rain(forecast: Forecast, language: str) -> str:

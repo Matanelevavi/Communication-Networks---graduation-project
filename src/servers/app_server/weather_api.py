@@ -12,7 +12,7 @@ own time zone, so the CSV in the archive and the summary on screen name the
 same hours.
 """
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import requests
 
@@ -26,6 +26,15 @@ FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
 RAIN_THRESHOLD = 30          # percent: below this, "rain is likely" would mislead
 FORECAST_HOURS = 24
+FORECAST_DAYS = 7
+MAX_SUGGESTIONS = 5
+
+CURRENT_FIELDS = ("temperature_2m,apparent_temperature,relative_humidity_2m,"
+                  "weather_code,wind_speed_10m,is_day")
+HOURLY_FIELDS = "temperature_2m,precipitation_probability,weather_code"
+DAILY_FIELDS = ("weather_code,temperature_2m_max,temperature_2m_min,"
+                "precipitation_probability_max,uv_index_max,wind_speed_10m_max,"
+                "sunrise,sunset")
 
 # Open-Meteo knows the big cities by their Hebrew names but not every town:
 # "אריאל" finds nothing while "Ariel" does. When a Hebrew search comes back
@@ -58,18 +67,48 @@ class Place:
     longitude: float
 
 
+# Bumped whenever to_dict gains a field, so an entry written by an older version
+# is refetched instead of served with half the picture missing.
+SCHEMA_VERSION = 2
+
+
 @dataclass(frozen=True)
 class Forecast:
-    """The next 24 hours for one place, reduced to what the advice needs."""
+    """
+    The next 24 hours and the next week for one place.
+
+    The first five fields are what the clothing advice has always needed; the
+    rest is what the page draws: how it feels, the wind, the UV index, the
+    weather code for an icon, and the hour by hour and day by day series.
+    Everything added later is optional, so a response that lacks it still makes
+    a usable forecast.
+    """
     place: Place
     min_temp: float
     max_temp: float
     current_temp: float | None
     rain_summary: str
+    feels_like: float | None = None
+    humidity: int | None = None
+    wind_kmh: float | None = None
+    weather_code: int | None = None
+    is_day: bool | None = None
+    uv_max: float | None = None
+    sunrise: str | None = None
+    sunset: str | None = None
+    hourly: list = field(default_factory=list)     # [{"t", "temp", "rain", "code"}]
+    daily: list = field(default_factory=list)      # [{"date", "code", "min", "max", ...}]
+
+    @property
+    def peak_wind_kmh(self) -> float:
+        """The stronger of the wind now and today's strongest gust of it, in km/h."""
+        today = self.daily[0].get("wind") if self.daily else None
+        return max(self.wind_kmh or 0, today or 0)
 
     def to_dict(self) -> dict:
         """The forecast as plain data, which is what the cache stores."""
         return {
+            "v": SCHEMA_VERSION,
             "city": self.place.name,
             "latitude": self.place.latitude,
             "longitude": self.place.longitude,
@@ -77,17 +116,39 @@ class Forecast:
             "max_temp": self.max_temp,
             "current_temp": self.current_temp,
             "rain": self.rain_summary,
+            "feels_like": self.feels_like,
+            "humidity": self.humidity,
+            "wind_kmh": self.wind_kmh,
+            "weather_code": self.weather_code,
+            "is_day": self.is_day,
+            "uv_max": self.uv_max,
+            "sunrise": self.sunrise,
+            "sunset": self.sunset,
+            "hourly": self.hourly,
+            "daily": self.daily,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "Forecast":
-        """Rebuild a forecast from :meth:`to_dict`.  Raises KeyError if incomplete."""
+        """Rebuild a forecast from :meth:`to_dict`.  Raises KeyError if incomplete or old."""
+        if data["v"] != SCHEMA_VERSION:
+            raise KeyError("v")
         return cls(
             place=Place(data["city"], data["latitude"], data["longitude"]),
             min_temp=data["min_temp"],
             max_temp=data["max_temp"],
             current_temp=data.get("current_temp"),
             rain_summary=data["rain"],
+            feels_like=data.get("feels_like"),
+            humidity=data.get("humidity"),
+            wind_kmh=data.get("wind_kmh"),
+            weather_code=data.get("weather_code"),
+            is_day=data.get("is_day"),
+            uv_max=data.get("uv_max"),
+            sunrise=data.get("sunrise"),
+            sunset=data.get("sunset"),
+            hourly=list(data.get("hourly") or []),
+            daily=list(data.get("daily") or []),
         )
 
 
@@ -122,39 +183,112 @@ class WeatherService(ExternalService):
             raise ServiceError("The geocoding service returned "
                                "an unexpected answer.") from e
 
-    def _search(self, name: str, language: str) -> list:
+    def _search(self, name: str, language: str, count: int = 1) -> list:
         # Parameters go to requests rather than into an f-string, so a name
         # such as "Tel Aviv" is percent encoded correctly.  A Hebrew query is
         # answered with the Hebrew name, so the card shows what the user typed.
         payload = self._get(GEOCODING_URL, {
-            "name": name, "count": 1, "format": "json", "language": language,
+            "name": name, "count": count, "format": "json", "language": language,
         })
         return payload.get("results") or []
+
+    # --------------------------------------------------------- place search
+    def search(self, query: str) -> list[dict]:
+        """
+        Up to five places that match what the user has typed so far.
+
+        "Ariel" alone names five places in four countries, so picking the first
+        match silently gives some people the wrong weather. Offering the list
+        lets them choose, and the choice travels as coordinates.
+        """
+        hebrew = not self.is_english_only(query)
+        results = self._search(query, "he" if hebrew else "en", count=MAX_SUGGESTIONS)
+
+        if not results and hebrew:
+            english = HEBREW_CITY_NAMES.get(" ".join(query.replace("-", " ").split()))
+            if english:
+                # The name the user typed, on the one town the table points to.
+                results = [{**r, "name": query} for r in self._search(english, "he", count=1)[:1]]
+
+        return [{"name": r.get("name") or query, "admin1": r.get("admin1") or "",
+                 "country": r.get("country") or "",
+                 "latitude": r["latitude"], "longitude": r["longitude"]}
+                for r in results if "latitude" in r and "longitude" in r][:MAX_SUGGESTIONS]
+
+    # ------------------------------------------------------------ forecasts
+    def fetch_at(self, name: str, latitude: float, longitude: float) -> Forecast:
+        """The forecast for coordinates the user already chose or shared."""
+        return self._forecast(Place(name, latitude, longitude))
 
     def _forecast(self, place: Place) -> Forecast:
         payload = self._get(FORECAST_URL, {
             "latitude": place.latitude,
             "longitude": place.longitude,
-            "current_weather": "true",
-            "hourly": "temperature_2m,precipitation_probability",
+            "current": CURRENT_FIELDS,
+            "hourly": HOURLY_FIELDS,
+            "daily": DAILY_FIELDS,
             "forecast_hours": FORECAST_HOURS,
+            "forecast_days": FORECAST_DAYS,
+            "wind_speed_unit": "kmh",
             "timezone": "auto",
         })
 
-        hourly = payload.get("hourly", {})
-        temps = [t for t in hourly.get("temperature_2m", [])[:FORECAST_HOURS] if t is not None]
+        hourly = payload.get("hourly") or {}
+        times = (hourly.get("time") or [])[:FORECAST_HOURS]
+        temps = [t for t in (hourly.get("temperature_2m") or [])[:FORECAST_HOURS] if t is not None]
         if not temps:
             raise ServiceError(f"No forecast is available for '{place.name}'.")
+
+        current = payload.get("current") or {}
+        legacy = payload.get("current_weather") or {}
+        daily = self._daily(payload.get("daily") or {})
+        today = daily[0] if daily else {}
 
         return Forecast(
             place=place,
             min_temp=min(temps),
             max_temp=max(temps),
-            current_temp=payload.get("current_weather", {}).get("temperature"),
+            current_temp=current.get("temperature_2m", legacy.get("temperature")),
             rain_summary=self._summarise_rain(
-                hourly.get("precipitation_probability", [])[:FORECAST_HOURS],
-                hourly.get("time", [])[:FORECAST_HOURS]),
+                (hourly.get("precipitation_probability") or [])[:FORECAST_HOURS], times),
+            feels_like=current.get("apparent_temperature"),
+            humidity=current.get("relative_humidity_2m"),
+            wind_kmh=current.get("wind_speed_10m"),
+            weather_code=current.get("weather_code"),
+            is_day=None if current.get("is_day") is None else bool(current["is_day"]),
+            uv_max=today.get("uv"),
+            sunrise=today.get("sunrise"),
+            sunset=today.get("sunset"),
+            hourly=self._hours(hourly, times),
+            daily=daily,
         )
+
+    @staticmethod
+    def _column(source: dict, name: str, length: int) -> list:
+        """One series from the response, padded so a short one cannot raise."""
+        values = list(source.get(name) or [])
+        return (values + [None] * length)[:length]
+
+    @classmethod
+    def _hours(cls, hourly: dict, times: list) -> list[dict]:
+        n = len(times)
+        temps = cls._column(hourly, "temperature_2m", n)
+        rain = cls._column(hourly, "precipitation_probability", n)
+        codes = cls._column(hourly, "weather_code", n)
+        return [{"t": times[i], "temp": temps[i], "rain": rain[i], "code": codes[i]}
+                for i in range(n)]
+
+    @classmethod
+    def _daily(cls, daily: dict) -> list[dict]:
+        dates = (daily.get("time") or [])[:FORECAST_DAYS]
+        n = len(dates)
+        columns = {key: cls._column(daily, name, n) for key, name in (
+            ("code", "weather_code"), ("max", "temperature_2m_max"),
+            ("min", "temperature_2m_min"), ("rain", "precipitation_probability_max"),
+            ("uv", "uv_index_max"), ("wind", "wind_speed_10m_max"),
+            ("sunrise", "sunrise"), ("sunset", "sunset"))}
+        return [{"date": dates[i], **{key: column[i] for key, column in columns.items()}}
+                for i in range(n)]
 
     @staticmethod
     def _summarise_rain(probabilities, times) -> str:

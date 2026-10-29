@@ -18,7 +18,7 @@ import re
 import time
 
 from src.config import FORECAST_CACHE_TTL
-from src.servers.app_server.storage import FileStore
+from src.servers.app_server.storage import PRIVATE_PREFIX, FileStore  # noqa: F401 - re-exported
 
 log = logging.getLogger(__name__)
 

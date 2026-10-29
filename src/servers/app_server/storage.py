@@ -11,6 +11,10 @@ import threading
 
 log = logging.getLogger(__name__)
 
+# A file whose name starts with this is somebody's shared position. It is kept
+# for the cache, and the archive neither lists it nor serves it.
+PRIVATE_PREFIX = "private_"
+
 # NUL ends a path in C, a colon names a drive or a data stream on Windows, and
 # control characters have no place in a file name.
 FORBIDDEN = {chr(c) for c in range(32)} | {":", "\x7f"}
@@ -78,13 +82,13 @@ class FileStore:
         """
         Every real file in the directory as (name, size), sorted by name.
 
-        Directories and dotfiles are left out: neither is content a client
-        asked to be able to download.
+        Directories, dotfiles and private files are left out: none of them is
+        content a client asked to be able to download.
         """
         try:
             with self.lock:
                 names = sorted(name for name in os.listdir(self.folder)
-                               if not name.startswith(".")
+                               if not name.startswith((".", PRIVATE_PREFIX))
                                and os.path.isfile(os.path.join(self.folder, name)))
                 return [(name, os.path.getsize(os.path.join(self.folder, name)))
                         for name in names]

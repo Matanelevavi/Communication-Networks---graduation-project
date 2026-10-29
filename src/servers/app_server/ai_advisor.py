@@ -33,27 +33,34 @@ class AiAdvisor(ExternalService):
         """False when no key is set, which is a normal state and not an error."""
         return bool(self.api_key)
 
-    def recommend(self, forecast: Forecast, profiles) -> str:
+    def recommend(self, forecast: Forecast, profiles, language: str | None = None) -> str:
         """One paragraph of advice.  Raises :class:`ServiceError` on failure."""
         if not self.is_configured:
             raise ServiceError("AI Error: no GEMINI_API_KEY is configured.")
 
-        return self._ask(self.build_prompt(forecast, profiles))
+        return self._ask(self.build_prompt(forecast, profiles, language))
 
     @classmethod
-    def build_prompt(cls, forecast: Forecast, profiles) -> str:
+    def build_prompt(cls, forecast: Forecast, profiles, language: str | None = None) -> str:
         """
         The instructions first, then the user's data as JSON, marked as data.
 
         The family description is typed by the user, so it is kept apart from
         the instructions and the model is told not to follow anything inside
-        it. The answer comes back in the language the user wrote in.
+        it. The answer comes back in the language the page is shown in, or, when
+        the page does not say, the language the user wrote in.
         """
-        hebrew = not cls.is_english_only(f"{forecast.place.name} {profiles}")
+        if language in ("he", "en"):
+            hebrew = language == "he"
+        else:
+            hebrew = not cls.is_english_only(f"{forecast.place.name} {profiles}")
         data = json.dumps({
-            "place": forecast.place.name,
+            "place": forecast.place.name or None,
             "min_temp_c": forecast.min_temp,
             "max_temp_c": forecast.max_temp,
+            "feels_like_c": forecast.feels_like,
+            "wind_kmh": forecast.wind_kmh,
+            "uv_index_max": forecast.uv_max,
             "rain": forecast.rain_summary,
             "family": profiles or [],
         }, ensure_ascii=False)

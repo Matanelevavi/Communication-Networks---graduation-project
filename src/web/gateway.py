@@ -111,17 +111,42 @@ class NetworkGateway:
         size = len(answer.encode("utf-8")) if isinstance(answer, str) else len(answer)
         return Exchange(protocol, answer, elapsed, size, dict(transport.stats))
 
-    def forecast(self, city: str, profiles: list[dict], protocol: str) -> tuple[dict | None, Exchange]:
-        """The forecast card, or ``None`` when the server answered with an error."""
-        exchange = self.exchange({"action": "FORECAST", "city": city,
-                                  "profiles": profiles}, protocol)
+    def forecast(self, city: str, profiles: list[dict], protocol: str,
+                 lat: float | None = None, lon: float | None = None,
+                 lang: str | None = None) -> tuple[dict | None, Exchange]:
+        """
+        The forecast card, or ``None`` when the server answered with an error.
+
+        A place the visitor chose or shared travels as coordinates, and the
+        language the page is shown in lets the advice be written in it.
+        """
+        request = {"action": "FORECAST", "city": city, "profiles": profiles}
+        if lat is not None and lon is not None:
+            request.update(lat=lat, lon=lon)
+        if lang:
+            request["lang"] = lang
+
+        exchange = self.exchange(request, protocol)
         if exchange.is_error:
             return None, exchange
+        return self._json_object(exchange), exchange
+
+    def search(self, query: str, protocol: str) -> tuple[list[dict], Exchange]:
+        """Places matching what has been typed so far."""
+        exchange = self.exchange({"action": "SEARCH", "query": query}, protocol)
+        if exchange.is_error:
+            return [], exchange
+        answer = self._json_object(exchange) or {}
+        places = answer.get("places")
+        return (places if isinstance(places, list) else []), exchange
+
+    @staticmethod
+    def _json_object(exchange: Exchange) -> dict | None:
         try:
-            card = json.loads(exchange.answer)
+            decoded = json.loads(exchange.answer)
         except (TypeError, ValueError):
-            return None, exchange
-        return (card if isinstance(card, dict) else None), exchange
+            return None
+        return decoded if isinstance(decoded, dict) else None
 
     def archive(self, protocol: str) -> tuple[list[dict], Exchange]:
         exchange = self.exchange({"action": "FTP_LIST"}, protocol)

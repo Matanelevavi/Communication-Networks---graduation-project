@@ -7,7 +7,7 @@ JSON protocol as everything else rather than over a separate control channel.
 import json
 import logging
 
-from src.servers.app_server.storage import FileStore
+from src.servers.app_server.storage import PRIVATE_PREFIX, FileStore
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +39,8 @@ class FileArchive:
         Read as bytes and decoded afterwards, so a genuinely binary file comes
         back as bytes instead of raising a decoding error.
         """
-        raw = self.store.read_bytes(filename)
+        # A shared position is cached under a private name; it is not archive content.
+        raw = None if filename.startswith(PRIVATE_PREFIX) else self.store.read_bytes(filename)
         if raw is None:
             log.warning(f"FTP Error: File '{filename}' not found")
             return f"Error: The file '{filename}' does not exist in the archive."
