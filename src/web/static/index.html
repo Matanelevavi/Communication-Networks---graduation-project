@@ -10,6 +10,10 @@
   <meta property="og:description" content="Live forecast and clothing advice for every member of the family.">
   <meta property="og:type" content="website">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="WeatherWear">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap">
@@ -32,6 +36,7 @@
         <button class="tab" role="tab" id="tab-how" aria-controls="panel-how" aria-selected="false" tabindex="-1" data-i18n="tab_how">How it works</button>
       </nav>
       <div class="toolbar">
+        <button class="icon-btn" id="install" type="button" hidden data-i18n="install_app">Install</button>
         <button class="icon-btn" id="lang-toggle" type="button" aria-label="Language">EN</button>
         <button class="icon-btn" id="theme-toggle" type="button" aria-label="Theme">
           <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
@@ -52,9 +57,16 @@
         <form id="forecast-form" class="card form" novalidate>
           <div class="field">
             <label for="city" data-i18n="city">City</label>
-            <div class="input-row">
-              <input id="city" name="city" type="text" autocomplete="address-level2" maxlength="80" required dir="auto">
+            <div class="input-row combo">
+              <input id="city" name="city" type="text" autocomplete="off" maxlength="80" required dir="auto"
+                     role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="city-list"
+                     aria-haspopup="listbox" spellcheck="false">
+              <button type="button" class="locate" id="locate" aria-label="Use my location">
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 2v3m0 14v3M2 12h3m14 0h3"/><circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>
+              </button>
+              <ul class="suggest" id="city-list" role="listbox" hidden></ul>
             </div>
+            <p class="hint" id="place-note" hidden></p>
             <div class="chips" id="city-chips" aria-label="Suggestions"></div>
           </div>
 
@@ -91,17 +103,29 @@
           <div class="alert" id="error" role="alert" hidden></div>
 
           <article class="card forecast" id="forecast" hidden>
+            <p class="stale" id="fc-stale" role="status" hidden></p>
+
             <header class="forecast__head">
               <div>
-                <h2 id="fc-city"></h2>
-                <p class="muted" data-i18n="next_24">Next 24 hours</p>
+                <h2 id="fc-city" dir="auto"></h2>
+                <p class="muted" id="fc-sub" data-i18n="next_24">Next 24 hours</p>
               </div>
-              <div class="forecast__icon" id="fc-icon" aria-hidden="true"></div>
+              <div class="unit-toggle" role="group" aria-label="Units">
+                <button type="button" data-unit="c" aria-pressed="true">°C</button>
+                <button type="button" data-unit="f" aria-pressed="false">°F</button>
+              </div>
             </header>
 
-            <div class="now">
-              <span class="now__label" data-i18n="now">Now</span>
-              <span class="now__temp" id="fc-now"></span>
+            <div class="current">
+              <div class="forecast__icon" id="fc-icon" aria-hidden="true"></div>
+              <div class="current__text">
+                <div class="now">
+                  <span class="now__label" data-i18n="now">Now</span>
+                  <span class="now__temp" id="fc-now"></span>
+                </div>
+                <p class="condition" id="fc-condition"></p>
+                <p class="muted" id="fc-feels"></p>
+              </div>
             </div>
 
             <div class="range" aria-hidden="true"><span class="range__fill" id="fc-range"></span></div>
@@ -113,6 +137,13 @@
             </dl>
             <div class="rain-hours" id="fc-rain-hours"></div>
 
+            <dl class="details" id="fc-details"></dl>
+
+            <section class="gear-box" id="gear-box" hidden>
+              <h3 data-i18n="bring_title">What to bring</h3>
+              <ul class="gear" id="fc-gear"></ul>
+            </section>
+
             <section class="advice">
               <div class="advice__head">
                 <h3 data-i18n="what_to_wear">What to wear</h3>
@@ -123,6 +154,18 @@
                 <button class="btn btn--ghost btn--small" type="button" id="copy" data-i18n="copy">Copy</button>
                 <button class="btn btn--ghost btn--small" type="button" id="share" data-i18n="share">Share</button>
               </div>
+            </section>
+
+            <section class="hourly" id="hourly-box" hidden>
+              <h3 data-i18n="hourly_title">Hour by hour</h3>
+              <p class="readout" id="hourly-readout" aria-live="polite"></p>
+              <svg id="hourly-chart" viewBox="0 0 640 220" role="img" tabindex="0" preserveAspectRatio="xMidYMid meet"></svg>
+              <div class="chart-legend" id="hourly-legend"></div>
+            </section>
+
+            <section class="week" id="week-box" hidden>
+              <h3 data-i18n="week_title">The week</h3>
+              <ul class="days" id="fc-days"></ul>
             </section>
 
             <details class="wire" id="wire">

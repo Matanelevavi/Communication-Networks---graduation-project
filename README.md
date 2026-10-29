@@ -28,6 +28,37 @@ phone, has a dark mode, and keeps the family you describe on your own device.
 Every answer comes with an **Under the hood** panel: which transport carried
 it, how many datagrams arrived, how many were duplicates or failed their CRC.
 
+### The forecast
+
+Beyond the temperature, the page shows what a person deciding what to wear needs:
+
+* **hour by hour** for the next 24 hours, as a line for the temperature with the
+  chance of rain as bars under it; hover, touch or use the arrow keys to read one hour;
+* **the week**, with a bar for each day's range;
+* **wind, UV index** (coloured by level), **humidity** and **sunrise and sunset**, and
+  how it *feels* when that differs from the air temperature;
+* **what to bring** as a short list of icons (umbrella, sunscreen, windbreaker, spare
+  clothes for a small child...), produced by the same thresholds as the written advice,
+  so the two cannot disagree;
+* **°C / °F**, a weather icon from the sky condition (day or night), and the advice in
+  the language the page is shown in, even when the city was typed in the other one.
+
+**Choosing the right place.** "Ariel" is five towns in four countries, so typing shows
+suggestions with their region and country, and picking one sends its coordinates. The
+suggestions are a keyboard-operable ARIA combobox. A button finds your location.
+
+**A shared location is treated as private.** It is rounded to about a kilometre in the
+browser and again on the server, cached under a hashed name that the public archive
+neither lists nor serves, never offered back as a shortcut, and no report is archived
+for it.
+
+**Installable and forgiving offline.** It is a progressive web app: a manifest, icons
+(rendered by `tools/make_icons.py`) and a service worker that keeps the page itself
+available without a connection. The service worker never touches `/api`; a forecast is
+dynamic and a family's names ride in the request. Instead the page keeps the last
+forecast on the device and, when there is no connection, shows it with a banner that
+says so. It also opens on the last forecast instead of an empty page.
+
 ### The protocol lab
 
 The **Protocol lab** tab sends one file through a simulated network, with the

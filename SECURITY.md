@@ -50,6 +50,10 @@ behind it, because they are also run directly in the desktop client.
 | 15 | A vulnerable dependency | `pip-audit` on every push and weekly, Dependabot, and Trivy on the built image | `.github/workflows/security.yml` |
 | 16 | The container running as root | It runs as an unprivileged user (uid 10001) | `Dockerfile` |
 | 17 | The protocol lab used to burn CPU | Every input is bounded (256 KB, 50 % loss, 400 ms, 64 packets) at the API and again in the runner; a run is capped at 400,000 simulated events; the worst case measured is under 50 ms; the lab has a rate limit of its own, so it cannot starve real forecasts | `src/lab/`, `LabRequest`, tested |
+| 18 | A visitor's location leaking into the public archive | A position the browser shares is rounded to ~1 km in the browser and again on the server, cached under a hashed `private_` name that the archive neither lists nor serves, never offered back as a shortcut, and has no report archived; a place picked by name is cached by name and coordinates, which is public data | `RequestRouter._cache_key`, `FileStore.list_files`, tested |
+| 19 | The place search used to hammer the upstream geocoder, or be used to amplify requests to it | Queries are 2 to 60 characters, answered from a bounded in-memory cache for an hour, and have a rate limit of their own that cannot starve forecasts | `RequestRouter.search`, `/api/search`, tested |
+| 20 | A service worker serving stale or private data | It handles only same-origin GETs of the page's own files, never anything under `/api`, and fetches from the network first so a new release is not hidden behind an old copy | `src/web/static/sw.js` |
+| 21 | Hostile coordinates | `lat` and `lon` must be finite numbers in range and arrive together, checked at the API and again in the router; nothing reaches the weather service otherwise | `ForecastRequest`, `RequestRouter._coordinates`, fuzzed |
 
 ### What fuzzing found
 

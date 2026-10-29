@@ -85,6 +85,32 @@ const STRINGS = {
       "Time is virtual: a minute of simulated network takes milliseconds to compute, and one seed gives both protocols exactly the same loss pattern.",
     ],
     lab_honesty: "The TCP line is a model of TCP Reno, not your operating system's TCP, which cannot be placed on a lossy virtual link. The RUDP line is the real sender and receiver from src/rudp, unchanged.",
+    use_location: "Use my location", locating: "Finding you...", my_location: "Your location",
+    loc_denied: "Location is blocked for this site. Allow it in your browser settings, or type a city.",
+    loc_unavailable: "Could not find your location. Type a city instead.",
+    loc_unsupported: "This browser cannot share a location. Type a city instead.",
+    place_note: (label) => `Showing exactly this place: ${label}`,
+    place_private: "Using your location. It is never stored under your name or shown to anyone else.",
+    no_places: "No places found", places_label: "Suggested places",
+    wx_clear: "Clear sky", wx_mostly_clear: "Mostly clear", wx_partly: "Partly cloudy", wx_overcast: "Overcast",
+    wx_fog: "Fog", wx_drizzle: "Drizzle", wx_rain: "Rain", wx_freezing: "Freezing rain",
+    wx_snow: "Snow", wx_showers: "Showers", wx_thunder: "Thunderstorm",
+    feels_like: (v) => `Feels like ${v}`,
+    d_wind: "Wind", d_uv: "UV index", d_humidity: "Humidity", d_sun: "Sunrise / sunset",
+    d_gusts: (v) => `up to ${v} today`,
+    uv_low: "Low", uv_moderate: "Moderate", uv_high: "High", uv_very_high: "Very high", uv_extreme: "Extreme",
+    bring_title: "What to bring",
+    gear_umbrella: "Umbrella", gear_warm_coat: "Warm coat", gear_jacket: "Jacket", gear_gloves: "Gloves",
+    gear_windbreaker: "Windbreaker", gear_hat: "Hat", gear_sunscreen: "Sunscreen", gear_sunglasses: "Sunglasses",
+    gear_water: "Water", gear_spare_clothes: "Spare clothes",
+    hourly_title: "Hour by hour", hourly_now: "now",
+    legend_temp: "Temperature", legend_rain: "Chance of rain",
+    hourly_aria: (lo, hi, rain) => `Temperature over the next 24 hours, from ${lo} to ${hi}. Highest chance of rain ${rain}%. Use the arrow keys to move along it.`,
+    hourly_readout: (hour, temp, rain) => `${hour}  ·  ${temp}  ·  rain ${rain}%`,
+    week_title: "The week", today: "Today",
+    stale_saved: (when) => `Saved forecast from ${when}. Press the button for a fresh one.`,
+    stale_offline: (when) => `You are offline. Showing the forecast saved ${when}.`,
+    install_app: "Install", unit_kmh: "km/h", unit_mph: "mph",
     chips: ["Tel Aviv", "Jerusalem", "Haifa", "Ariel", "Beersheba", "Eilat"],
     lang_button: "עב", lang_label: "עברית", theme_label: "Switch theme",
   },
@@ -164,6 +190,32 @@ const STRINGS = {
       "הזמן וירטואלי: דקה של רשת מדומה מחושבת באלפיות שנייה, וזרע אחד נותן לשני הפרוטוקולים בדיוק אותו דפוס אובדן.",
     ],
     lab_honesty: "קו ה-TCP הוא מודל של TCP Reno, לא ה-TCP של מערכת ההפעלה, שאי אפשר להניח על קו וירטואלי עם אובדן. קו ה-RUDP הוא השולח והמקבל האמיתיים מ-src/rudp, בלי שינוי.",
+    use_location: "המיקום שלי", locating: "מאתרים אתכם...", my_location: "המיקום שלך",
+    loc_denied: "המיקום חסום לאתר הזה. אפשר לאשר אותו בהגדרות הדפדפן, או להקליד עיר.",
+    loc_unavailable: "לא הצלחנו לאתר אתכם. הקלידו עיר.",
+    loc_unsupported: "הדפדפן הזה לא יכול לשתף מיקום. הקלידו עיר.",
+    place_note: (label) => `מוצג בדיוק המקום הזה: ${label}`,
+    place_private: "משתמשים במיקום שלכם. הוא לא נשמר בשמכם ולא מוצג לאף אחד אחר.",
+    no_places: "לא נמצאו מקומות", places_label: "מקומות מוצעים",
+    wx_clear: "שמיים בהירים", wx_mostly_clear: "בהיר ברובו", wx_partly: "מעונן חלקית", wx_overcast: "מעונן",
+    wx_fog: "ערפל", wx_drizzle: "טפטוף", wx_rain: "גשם", wx_freezing: "גשם קפוא",
+    wx_snow: "שלג", wx_showers: "ממטרים", wx_thunder: "סופת רעמים",
+    feels_like: (v) => `מרגיש כמו ${v}`,
+    d_wind: "רוח", d_uv: "מדד UV", d_humidity: "לחות", d_sun: "זריחה / שקיעה",
+    d_gusts: (v) => `עד ${v} היום`,
+    uv_low: "נמוך", uv_moderate: "בינוני", uv_high: "גבוה", uv_very_high: "גבוה מאוד", uv_extreme: "קיצוני",
+    bring_title: "מה לקחת",
+    gear_umbrella: "מטרייה", gear_warm_coat: "מעיל חם", gear_jacket: "ז'קט", gear_gloves: "כפפות",
+    gear_windbreaker: "מעיל רוח", gear_hat: "כובע", gear_sunscreen: "קרם הגנה", gear_sunglasses: "משקפי שמש",
+    gear_water: "מים", gear_spare_clothes: "בגדים להחלפה",
+    hourly_title: "שעה אחר שעה", hourly_now: "עכשיו",
+    legend_temp: "טמפרטורה", legend_rain: "סיכוי לגשם",
+    hourly_aria: (lo, hi, rain) => `הטמפרטורה ב-24 השעות הקרובות, מ-${lo} עד ${hi}. הסיכוי הגבוה ביותר לגשם ${rain}%. אפשר לנוע לאורכה עם חיצי המקלדת.`,
+    hourly_readout: (hour, temp, rain) => `${hour}  ·  ${temp}  ·  גשם ${rain}%`,
+    week_title: "השבוע", today: "היום",
+    stale_saved: (when) => `תחזית שמורה מ${when}. לחצו על הכפתור לתחזית עדכנית.`,
+    stale_offline: (when) => `אין חיבור לאינטרנט. מוצגת התחזית ששמורה מ${when}.`,
+    install_app: "התקנה", unit_kmh: "קמ\"ש", unit_mph: "מייל לשעה",
     chips: ["תל אביב", "ירושלים", "חיפה", "אריאל", "באר שבע", "אילת"],
     lang_button: "EN", lang_label: "English", theme_label: "החלפת ערכת צבעים",
   },
@@ -192,7 +244,10 @@ const $ = (selector) => document.querySelector(selector);
 const state = {
   lang: store.get("lang", navigator.language?.startsWith("he") ? "he" : "en"),
   people: store.get("people", null),
+  units: store.get("units", "c"),            // "c" or "f"
   lastCard: null,
+  stale: null,                               // "saved" or "offline" while an old forecast is on screen
+  chosenPlace: null,                         // a suggestion the visitor picked, or a shared position
 };
 
 function t(key, ...args) {
@@ -210,6 +265,9 @@ function applyLanguage() {
     el.textContent = t(el.dataset.i18n);
   });
   $("#city").placeholder = t("city_placeholder");
+  $("#locate").setAttribute("aria-label", t("use_location"));
+  $("#locate").title = t("use_location");
+  hourlyLegend();
   $("#lang-toggle").textContent = t("lang_button");
   $("#lang-toggle").setAttribute("aria-label", t("lang_label"));
   $("#theme-toggle").setAttribute("aria-label", t("theme_label"));
@@ -374,6 +432,24 @@ async function api(path, options = {}) {
 }
 
 // --------------------------------------------------------------- forecast
+/**
+ * What goes to the server. A place the visitor picked from the suggestions, or
+ * shared from the browser, travels as coordinates, because a name alone can be
+ * several towns. The page's language travels too, so the advice is written in
+ * the language it is read in.
+ */
+function forecastRequest(city, people) {
+  const request = { city, profiles: people, protocol: protocol(), lang: state.lang };
+  const place = state.chosenPlace;
+  // Only while the field still says what the pick said: typing over it cancels it.
+  if (place && place.shown === $("#city").value.trim()) {
+    request.lat = place.lat;
+    request.lon = place.lon;
+    request.city = place.private ? "" : place.name;
+  }
+  return request;
+}
+
 async function submitForecast(event) {
   event?.preventDefault();
   const city = $("#city").value.trim();
@@ -394,15 +470,20 @@ async function submitForecast(event) {
       .map((p) => ({ ...p, age_category: t(`age_${p.age_category}`) }));
     const body = await api("api/forecast", {
       method: "POST",
-      body: JSON.stringify({ city, profiles: people, protocol: protocol() }),
+      body: JSON.stringify(forecastRequest(city, people)),
     });
-    remember(city);
+    // A shared position is not a place to offer again as a shortcut.
+    if (!state.chosenPlace?.private) remember(city);
     renderChips();
     state.lastCard = body;
+    state.stale = null;
+    saveLast(body);
     renderForecast(body.forecast, body.transfer);
     revealResult();
   } catch (failure) {
     showError(failure.message);
+    // No connection: the last forecast is better than a blank page.
+    if (!navigator.onLine || failure.message === t("err_network")) showSaved("offline");
     revealResult();
   } finally {
     button.disabled = false;
@@ -418,18 +499,76 @@ function revealResult() {
   $("#result").scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
 }
 
-function degrees(value) {
-  return typeof value === "number" ? `${Math.round(value * 10) / 10}°` : "--";
+// ----- units. The server speaks Celsius and km/h; the page converts for display.
+const toUnit = (celsius) => (state.units === "f" ? celsius * 9 / 5 + 32 : celsius);
+const round1 = (value) => Math.round(value * 10) / 10;
+
+function degrees(celsius, digits = 1) {
+  if (typeof celsius !== "number") return "--";
+  const value = toUnit(celsius);
+  return `${digits === 0 ? Math.round(value) : round1(value)}°`;
 }
 
-function weatherIcon(card) {
-  const wet = card.rain && card.rain !== NO_RAIN;
-  if (card.max_temp < 5) return "❄️";
-  if (wet) return "🌧️";
-  if (card.max_temp >= 27) return "☀️";
-  if (card.max_temp >= 18) return "🌤️";
-  return "⛅";
+function speed(kmh) {
+  if (typeof kmh !== "number") return "--";
+  return state.units === "f" ? `${Math.round(kmh * 0.621371)} ${t("unit_mph")}` : `${Math.round(kmh)} ${t("unit_kmh")}`;
 }
+
+// ----- the sky. WMO weather codes, as Open-Meteo reports them.
+const SKY_ICONS = {
+  clear: ["☀️", "🌙"], mostly_clear: ["🌤️", "🌙"], partly: ["⛅", "☁️"], overcast: ["☁️", "☁️"],
+  fog: ["🌫️", "🌫️"], drizzle: ["🌦️", "🌧️"], rain: ["🌧️", "🌧️"], freezing: ["🌨️", "🌨️"],
+  snow: ["❄️", "❄️"], showers: ["🌦️", "🌧️"], thunder: ["⛈️", "⛈️"],
+};
+
+function skyGroup(code) {
+  if (code === 0) return "clear";
+  if (code === 1) return "mostly_clear";
+  if (code === 2) return "partly";
+  if (code === 3) return "overcast";
+  if (code === 45 || code === 48) return "fog";
+  if (code >= 51 && code <= 55) return "drizzle";
+  if (code === 56 || code === 57 || code === 66 || code === 67) return "freezing";
+  if (code >= 61 && code <= 65) return "rain";
+  if (code >= 71 && code <= 77) return "snow";
+  if (code >= 80 && code <= 82) return "showers";
+  if (code === 85 || code === 86) return "snow";
+  if (code >= 95) return "thunder";
+  return null;
+}
+
+function skyIcon(code, daytime = true) {
+  const group = skyGroup(code);
+  return group ? SKY_ICONS[group][daytime ? 0 : 1] : "⛅";
+}
+
+// Without a weather code (an older saved forecast), guess from the numbers.
+function fallbackIcon(card) {
+  if (card.rain && card.rain !== NO_RAIN) return "🌧️";
+  if (card.max_temp < 5) return "❄️";
+  if (card.max_temp >= 27) return "☀️";
+  return card.max_temp >= 18 ? "🌤️" : "⛅";
+}
+
+function isDaytime(card, time) {
+  // "2026-10-29T14:00": compare the clock part with today's sunrise and sunset
+  if (!card.sunrise || !card.sunset || !time) return true;
+  const clock = time.slice(11, 16);
+  return clock >= card.sunrise.slice(11, 16) && clock < card.sunset.slice(11, 16);
+}
+
+function uvLevel(uv) {
+  if (uv >= 11) return "extreme";
+  if (uv >= 8) return "very_high";
+  if (uv >= 6) return "high";
+  if (uv >= 3) return "moderate";
+  return "low";
+}
+
+const GEAR_ICONS = {
+  umbrella: "☂️", warm_coat: "🧣", jacket: "🧥", gloves: "🧤", windbreaker: "🌬️", hat: "🧢",
+  sunscreen: "🧴", sunglasses: "🕶️", water: "💧", spare_clothes: "👕",
+};
 
 function rainHours(summary) {
   if (!summary || summary === NO_RAIN) return [];
@@ -440,12 +579,23 @@ function renderForecast(card, transfer) {
   $("#placeholder").hidden = true;
   $("#forecast").hidden = false;
 
-  $("#fc-city").textContent = card.city;
-  $("#fc-city").dir = "auto";
-  $("#fc-icon").textContent = weatherIcon(card);
+  // a shared position has no name of its own
+  $("#fc-city").textContent = card.city || t("my_location");
+  const daytime = card.is_day !== false;
+  $("#fc-icon").textContent = card.weather_code == null ? fallbackIcon(card) : skyIcon(card.weather_code, daytime);
   $("#fc-now").textContent = degrees(card.current_temp);
   $("#fc-low").textContent = degrees(card.min_temp);
   $("#fc-high").textContent = degrees(card.max_temp);
+
+  const group = skyGroup(card.weather_code);
+  $("#fc-condition").textContent = group ? t(`wx_${group}`) : "";
+  const feels = typeof card.feels_like === "number" && typeof card.current_temp === "number"
+    && Math.abs(card.feels_like - card.current_temp) >= 1;
+  $("#fc-feels").textContent = feels ? t("feels_like", degrees(card.feels_like)) : "";
+
+  for (const button of document.querySelectorAll(".unit-toggle button")) {
+    button.setAttribute("aria-pressed", String(button.dataset.unit === state.units));
+  }
 
   // Where today's range sits on a scale from -5° to 45°.
   const scale = (v) => Math.min(100, Math.max(0, ((v + 5) / 50) * 100));
@@ -463,10 +613,237 @@ function renderForecast(card, transfer) {
     return span;
   }));
 
+  renderDetails(card);
+  renderGear(card.gear || []);
   $("#fc-advice").textContent = card.advice;
   $("#fc-source").textContent = `${t(card.source === "ai" ? "source_ai" : "source_local")}${card.cached ? ` · ${t("cached")}` : ""}`;
+  renderHourly(card);
+  renderWeek(card);
+  renderStale();
 
   renderTransfer(transfer);
+}
+
+function detail(term, value, extra, valueClass) {
+  const wrap = document.createElement("div");
+  wrap.className = "detail";
+  const dt = document.createElement("dt");
+  const dd = document.createElement("dd");
+  dt.textContent = term;
+  dd.textContent = value;
+  if (valueClass) dd.className = valueClass;
+  wrap.append(dt, dd);
+  if (extra) {
+    const small = document.createElement("small");
+    small.textContent = extra;
+    dd.append(small);
+  }
+  return wrap;
+}
+
+function renderDetails(card) {
+  const tiles = [];
+  if (typeof card.wind_kmh === "number") {
+    const peak = card.daily?.[0]?.wind;
+    tiles.push(detail(t("d_wind"), speed(card.wind_kmh),
+      typeof peak === "number" && peak > card.wind_kmh + 5 ? t("d_gusts", speed(peak)) : ""));
+  }
+  if (typeof card.uv_max === "number") {
+    const level = uvLevel(card.uv_max);
+    tiles.push(detail(t("d_uv"), String(Math.round(card.uv_max)), t(`uv_${level}`), `uv-${level.replace("_", "-")}`));
+  }
+  if (typeof card.humidity === "number") tiles.push(detail(t("d_humidity"), `${card.humidity}%`));
+  if (card.sunrise && card.sunset) {
+    tiles.push(detail(t("d_sun"), `${card.sunrise.slice(11, 16)}  ·  ${card.sunset.slice(11, 16)}`));
+  }
+  $("#fc-details").replaceChildren(...tiles);
+  $("#fc-details").hidden = tiles.length === 0;
+}
+
+function renderGear(items) {
+  $("#gear-box").hidden = items.length === 0;
+  $("#fc-gear").replaceChildren(...items.filter((key) => GEAR_ICONS[key]).map((key) => {
+    const li = document.createElement("li");
+    const icon = document.createElement("span");
+    icon.className = "gear-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = GEAR_ICONS[key];
+    li.append(icon, document.createTextNode(t(`gear_${key}`)));
+    return li;
+  }));
+}
+
+// ----- hour by hour: temperature as a line, the chance of rain as bars underneath
+const HOURLY = { w: 640, h: 220, left: 40, right: 12, top: 22, bottom: 30 };
+let hourlyActive = null;
+
+function hourLabel(time) { return time ? time.slice(11, 16) : ""; }
+
+// A chart drawn in a fixed 640 unit box and shrunk to fit a phone shrinks its
+// text too, to a size nobody can read. Drawing in the width it will actually
+// have keeps the labels at their real size.
+function chartWidth(svg) {
+  const width = Math.round(svg.getBoundingClientRect().width);
+  return Math.min(900, Math.max(280, width || 640));
+}
+
+function renderHourly(card, active = null) {
+  const hours = (card.hourly || []).filter((h) => typeof h.temp === "number");
+  $("#hourly-box").hidden = hours.length < 2;
+  if (hours.length < 2) return;
+
+  const svg = $("#hourly-chart");
+  const width = chartWidth(svg);
+  svg.setAttribute("viewBox", `0 0 ${width} ${HOURLY.h}`);
+  const g = { ...HOURLY, w: width };
+  const plotW = g.w - g.left - g.right;
+  const plotH = g.h - g.top - g.bottom;
+  const rainBand = plotH * 0.26;
+  const lineBottom = g.top + plotH - rainBand - 8;
+  const temps = hours.map((h) => toUnit(h.temp));
+  const lo = Math.floor(Math.min(...temps) - 1), hi = Math.ceil(Math.max(...temps) + 1);
+  const x = (i) => g.left + (i / (hours.length - 1)) * plotW;
+  const y = (v) => lineBottom - ((v - lo) / Math.max(1, hi - lo)) * (lineBottom - g.top);
+  const parts = [];
+
+  const step = niceStep(hi - lo, 4);
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+    parts.push(svgEl("line", { class: "grid-line", x1: g.left, x2: g.w - g.right, y1: y(v), y2: y(v) }));
+    parts.push(svgEl("text", { class: "tick-label", x: g.left - 6, y: y(v) + 4, "text-anchor": "end" }, `${Math.round(v)}°`));
+  }
+  hours.forEach((h, i) => {
+    if (i % 3 === 0) parts.push(svgEl("text", { class: "tick-label", x: x(i), y: g.h - 10, "text-anchor": "middle" }, hourLabel(h.t)));
+  });
+
+  const barW = Math.max(3, plotW / hours.length - 3);
+  hours.forEach((h, i) => {
+    const chance = Math.max(0, Math.min(100, h.rain || 0));
+    if (chance === 0) return;
+    const height = Math.max(2, (chance / 100) * rainBand);
+    parts.push(svgEl("rect", { class: "h-rain", x: x(i) - barW / 2, y: g.top + plotH - height, width: barW, height, rx: 2 }));
+  });
+
+  const path = hours.map((_, i) => `${x(i).toFixed(1)},${y(temps[i]).toFixed(1)}`).join(" ");
+  parts.push(svgEl("polygon", { class: "h-area", points: `${x(0)},${lineBottom} ${path} ${x(hours.length - 1)},${lineBottom}` }));
+  parts.push(svgEl("polyline", { class: "h-line", points: path }));
+  parts.push(svgEl("text", { class: "h-now", x: x(0), y: g.top - 6, "text-anchor": "start" }, t("hourly_now")));
+
+  if (active !== null) {
+    parts.push(svgEl("line", { class: "h-guide", x1: x(active), x2: x(active), y1: g.top, y2: g.top + plotH }));
+    parts.push(svgEl("circle", { class: "h-dot", cx: x(active), cy: y(temps[active]), r: 5 }));
+  }
+  svg.replaceChildren(...parts);
+
+  const rains = hours.map((h) => h.rain || 0);
+  svg.setAttribute("aria-label", t("hourly_aria", degrees(Math.min(...hours.map((h) => h.temp)), 0),
+    degrees(Math.max(...hours.map((h) => h.temp)), 0), Math.max(...rains)));
+  $("#hourly-readout").textContent = active === null ? "" :
+    t("hourly_readout", hourLabel(hours[active].t), degrees(hours[active].temp, 0), hours[active].rain || 0);
+  hourlyActive = active;
+}
+
+function hourlyLegend() {
+  const items = [["var(--warm)", "legend_temp"], ["var(--cool)", "legend_rain"]];
+  $("#hourly-legend").replaceChildren(...items.map(([colour, key]) => {
+    const span = document.createElement("span");
+    const swatch = document.createElement("i");
+    swatch.style.borderTopColor = colour;
+    span.append(swatch, document.createTextNode(t(key)));
+    return span;
+  }));
+}
+
+function moveHourly(event) {
+  const card = state.lastCard?.forecast;
+  const hours = (card?.hourly || []).filter((h) => typeof h.temp === "number");
+  if (hours.length < 2) return;
+  const svg = $("#hourly-chart");
+  const box = svg.getBoundingClientRect();
+  const width = svg.viewBox.baseVal.width || HOURLY.w;
+  const unit = (event.clientX - box.left) / box.width * width;
+  const fraction = (unit - HOURLY.left) / (width - HOURLY.left - HOURLY.right);
+  renderHourly(card, Math.max(0, Math.min(hours.length - 1, Math.round(fraction * (hours.length - 1)))));
+}
+
+function keyHourly(event) {
+  const card = state.lastCard?.forecast;
+  const count = (card?.hourly || []).filter((h) => typeof h.temp === "number").length;
+  if (count < 2 || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  const current = hourlyActive ?? 0;
+  const next = event.key === "Home" ? 0 : event.key === "End" ? count - 1
+    : Math.max(0, Math.min(count - 1, current + (event.key === "ArrowRight" ? 1 : -1)));
+  renderHourly(card, next);
+  event.preventDefault();
+}
+
+// ----- the week
+function renderWeek(card) {
+  const days = (card.daily || []).filter((d) => typeof d.max === "number" && typeof d.min === "number");
+  $("#week-box").hidden = days.length === 0;
+  if (!days.length) return;
+
+  const low = Math.min(...days.map((d) => d.min)), high = Math.max(...days.map((d) => d.max));
+  const span = Math.max(1, high - low);
+  const weekday = new Intl.DateTimeFormat(state.lang, { weekday: "short" });
+
+  $("#fc-days").replaceChildren(...days.map((day, index) => {
+    const li = document.createElement("li");
+    li.className = "day";
+    const cell = (cls, text) => {
+      const el = document.createElement("span");
+      el.className = cls;
+      el.textContent = text;
+      return el;
+    };
+    const name = index === 0 ? t("today") : weekday.format(new Date(`${day.date}T12:00:00`));
+    const rain = typeof day.rain === "number" && day.rain >= 20 ? `${day.rain}%` : "";
+    const icon = cell("day__icon", skyIcon(day.code, true));
+    icon.setAttribute("aria-hidden", "true");
+
+    const bar = document.createElement("span");
+    bar.className = "day__bar";
+    const fill = document.createElement("span");
+    fill.className = "day__fill";
+    fill.style.insetInlineStart = `${((day.min - low) / span) * 100}%`;
+    fill.style.width = `${Math.max(6, ((day.max - day.min) / span) * 100)}%`;
+    bar.append(fill);
+
+    li.append(cell("day__name", name), icon, cell("day__rain", rain),
+      cell("day__min", degrees(day.min, 0)), bar, cell("day__max", degrees(day.max, 0)));
+    li.setAttribute("aria-label", `${name}: ${degrees(day.min, 0)} – ${degrees(day.max, 0)}`
+      + (day.rain >= 20 ? `, ${t("rain")} ${day.rain}%` : ""));
+    return li;
+  }));
+}
+
+// ----- the last forecast, kept on the device
+function saveLast(body) {
+  store.set("last", { forecast: body.forecast, transfer: body.transfer, savedAt: Date.now() });
+}
+
+function showSaved(reason) {
+  const saved = store.get("last", null);
+  if (!saved?.forecast) return;
+  state.lastCard = { forecast: { ...saved.forecast, cached: true }, transfer: saved.transfer };
+  state.stale = reason;                          // "saved" or "offline"; renderForecast shows it
+  renderForecast(state.lastCard.forecast, saved.transfer);
+}
+
+// The banner above a forecast that is not fresh. It is state, not an event, so
+// that switching language or units does not make it disappear.
+function renderStale() {
+  const banner = $("#fc-stale");
+  const saved = store.get("last", null);
+  if (!state.stale || !saved) { banner.hidden = true; return; }
+
+  const minutes = Math.max(0, Math.round((Date.now() - saved.savedAt) / 60000));
+  const relative = new Intl.RelativeTimeFormat(state.lang, { numeric: "auto" });
+  const when = minutes < 60 ? relative.format(-minutes, "minute")
+    : minutes < 1440 ? relative.format(-Math.round(minutes / 60), "hour")
+      : relative.format(-Math.round(minutes / 1440), "day");
+  banner.textContent = t(state.stale === "offline" ? "stale_offline" : "stale_saved", when);
+  banner.className = `stale${state.stale === "offline" ? " stale--offline" : ""}`;
+  banner.hidden = false;
 }
 
 function renderTransfer(transfer) {
@@ -524,6 +901,163 @@ async function shareAdvice() {
     try { await navigator.share({ title: "WeatherWear", text }); return; } catch { return; }
   }
   window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener");
+}
+
+// ------------------------------------------------- place suggestions (combobox)
+// "Ariel" is five towns in four countries. Typing shows them, and picking one
+// sends its coordinates, so the forecast is for the place that was meant.
+const combo = { places: [], active: -1, timer: null, sequence: 0 };
+
+function closeSuggestions() {
+  $("#city-list").hidden = true;
+  $("#city").setAttribute("aria-expanded", "false");
+  $("#city").removeAttribute("aria-activedescendant");
+  combo.active = -1;
+}
+
+function setActiveSuggestion(index) {
+  const options = [...$("#city-list").querySelectorAll("[role=option]")];
+  combo.active = options.length ? (index + options.length) % options.length : -1;
+  options.forEach((option, i) => option.setAttribute("aria-selected", String(i === combo.active)));
+  const current = options[combo.active];
+  if (current) {
+    $("#city").setAttribute("aria-activedescendant", current.id);
+    current.scrollIntoView({ block: "nearest" });
+  } else {
+    $("#city").removeAttribute("aria-activedescendant");
+  }
+}
+
+function renderSuggestions(places) {
+  combo.places = places;
+  const list = $("#city-list");
+  list.setAttribute("aria-label", t("places_label"));
+
+  if (!places.length) {
+    const none = document.createElement("li");
+    none.className = "none";
+    none.textContent = t("no_places");
+    list.replaceChildren(none);
+  } else {
+    list.replaceChildren(...places.map((place, i) => {
+      const li = document.createElement("li");
+      li.id = `place-${i}`;
+      li.setAttribute("role", "option");
+      li.setAttribute("aria-selected", "false");
+      const name = document.createElement("span");
+      name.className = "place-name";
+      name.textContent = place.name;
+      name.dir = "auto";
+      const where = document.createElement("span");
+      where.className = "place-where";
+      where.textContent = [place.admin1, place.country].filter(Boolean).join(", ");
+      where.dir = "auto";
+      li.append(name, where);
+      li.addEventListener("click", () => choosePlace(place));
+      return li;
+    }));
+  }
+  list.hidden = false;
+  $("#city").setAttribute("aria-expanded", "true");
+  combo.active = -1;
+}
+
+async function searchPlaces(query) {
+  const mine = ++combo.sequence;
+  try {
+    const body = await api(`api/search?q=${encodeURIComponent(query)}&protocol=TCP`);
+    if (mine === combo.sequence) renderSuggestions(body.places || []);   // a newer keystroke wins
+  } catch {
+    if (mine === combo.sequence) closeSuggestions();     // suggestions are a bonus: fail quietly
+  }
+}
+
+function onCityInput() {
+  // typing over a pick cancels it
+  state.chosenPlace = null;
+  $("#place-note").hidden = true;
+  clearTimeout(combo.timer);
+  const query = $("#city").value.trim();
+  if (query.length < 2) { combo.sequence++; closeSuggestions(); return; }
+  combo.timer = setTimeout(() => searchPlaces(query), 250);
+}
+
+function onCityKey(event) {
+  const open = !$("#city-list").hidden && combo.places.length > 0;
+  if (event.key === "ArrowDown" && open) { setActiveSuggestion(combo.active + 1); event.preventDefault(); }
+  else if (event.key === "ArrowUp" && open) { setActiveSuggestion(combo.active - 1); event.preventDefault(); }
+  else if (event.key === "Enter" && open && combo.active >= 0) {
+    event.preventDefault();
+    choosePlace(combo.places[combo.active]);
+  } else if (event.key === "Escape" && !$("#city-list").hidden) { closeSuggestions(); event.preventDefault(); }
+}
+
+function choosePlace(place) {
+  $("#city").value = place.name;
+  const label = [place.name, place.admin1, place.country].filter(Boolean).join(", ");
+  state.chosenPlace = { name: place.name, shown: place.name, lat: place.latitude, lon: place.longitude, private: false };
+  $("#place-note").textContent = t("place_note", label);
+  $("#place-note").hidden = false;
+  closeSuggestions();
+  submitForecast();
+}
+
+// ------------------------------------------------------------ find my location
+function useMyLocation() {
+  if (!navigator.geolocation) { showError(t("loc_unsupported")); return; }
+  const button = $("#locate");
+  button.setAttribute("aria-busy", "true");
+  hideError();
+  closeSuggestions();
+
+  navigator.geolocation.getCurrentPosition((position) => {
+    button.removeAttribute("aria-busy");
+    // The position leaves this device only inside the forecast request, and is
+    // rounded to about a kilometre on arrival. It is never offered as a shortcut.
+    const shown = t("my_location");
+    // rounded here as well as on the server: a position need not leave the device more precisely than weather can use
+    const round2 = (degrees) => Math.round(degrees * 100) / 100;
+    state.chosenPlace = { name: "", shown, lat: round2(position.coords.latitude),
+                          lon: round2(position.coords.longitude), private: true };
+    $("#city").value = shown;
+    $("#place-note").textContent = t("place_private");
+    $("#place-note").hidden = false;
+    submitForecast();
+  }, (failure) => {
+    button.removeAttribute("aria-busy");
+    showError(failure.code === 1 ? t("loc_denied") : t("loc_unavailable"));
+  }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
+}
+
+// -------------------------------------------------------------------- units
+function setUnits(units) {
+  state.units = units === "f" ? "f" : "c";
+  store.set("units", state.units);
+  if (state.lastCard) renderForecast(state.lastCard.forecast, state.lastCard.transfer);
+}
+
+// ------------------------------------------------------------ install as an app
+let installPrompt = null;
+
+function setupInstall() {
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();                      // keep it for our own button
+    installPrompt = event;
+    $("#install").hidden = false;
+  });
+  window.addEventListener("appinstalled", () => { installPrompt = null; $("#install").hidden = true; });
+  $("#install").addEventListener("click", async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    await installPrompt.userChoice.catch(() => null);
+    installPrompt = null;
+    $("#install").hidden = true;
+  });
+
+  // The service worker keeps the page itself available offline; forecasts are never cached by it.
+  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    navigator.serviceWorker.register("sw.js").catch(() => { /* an app without offline support is still an app */ });
+  }
 }
 
 // ---------------------------------------------------------------- archive
@@ -722,7 +1256,9 @@ function niceStep(max, wanted) {
 const GEOMETRY = { w: 640, h: 220, left: 46, right: 12, top: 12, bottom: 34 };
 
 function drawChart(svg, run, scale, upTo, kind, buffer) {
-  const g = GEOMETRY;
+  const width = chartWidth(svg);
+  svg.setAttribute("viewBox", `0 0 ${width} ${GEOMETRY.h}`);
+  const g = { ...GEOMETRY, w: width };
   const plotW = g.w - g.left - g.right;
   const plotH = g.h - g.top - g.bottom;
   const x = (ms) => g.left + (ms / scale.xMax) * plotW;
@@ -839,6 +1375,7 @@ function renderLabResult() {
   $("#lab-summary").textContent = labSummary(runs);
 
   $("#chart-rudp-title").textContent = t("lab_chart_rudp");
+  // (the charts are drawn at the width they have, so they are redrawn when it changes)
   $("#chart-tcp-title").textContent = t("lab_chart_tcp");
   const summary = labSummary(runs);
   for (const key of ["rudp", "tcp"]) {
@@ -990,8 +1527,44 @@ function start() {
   $("#copy").addEventListener("click", copyAdvice);
   $("#share").addEventListener("click", shareAdvice);
 
+  // place suggestions, location and units
+  $("#city").addEventListener("input", onCityInput);
+  $("#city").addEventListener("keydown", onCityKey);
+  $("#city").addEventListener("blur", () => setTimeout(closeSuggestions, 150));   // after a click lands
+  $("#city-list").addEventListener("mousedown", (event) => event.preventDefault()); // keep focus in the field
+  $("#locate").addEventListener("click", useMyLocation);
+  document.querySelectorAll(".unit-toggle button").forEach((button) =>
+    button.addEventListener("click", () => setUnits(button.dataset.unit)));
+
+  // the hour by hour chart: pointer, touch and keyboard
+  const chart = $("#hourly-chart");
+  chart.addEventListener("pointermove", moveHourly);
+  chart.addEventListener("pointerdown", moveHourly);
+  chart.addEventListener("keydown", keyHourly);
+  chart.addEventListener("focus", () => { if (hourlyActive === null) keyHourly({ key: "Home", preventDefault() {} }); });
+  chart.addEventListener("pointerleave", () => {
+    if (state.lastCard) renderHourly(state.lastCard.forecast, null);
+  });
+
+  // redraw the charts when their width changes (rotating a phone, resizing a window)
+  let resizeTimer = null;
+  let lastWidth = innerWidth;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      if (innerWidth === lastWidth) return;       // a scrolling address bar is not a new width
+      lastWidth = innerWidth;
+      if (state.lastCard && !$("#panel-forecast").hidden) renderHourly(state.lastCard.forecast, hourlyActive);
+      if (labState.result && !$("#panel-lab").hidden) drawAll(chartScale(labState.result.runs).xMax);
+    }, 200);
+  });
+
   applyLanguage();
   startLab();
+  setupInstall();
+
+  // Open on the last forecast instead of an empty page; a button press refreshes it.
+  if (!location.hash.startsWith("#lab")) showSaved("saved");
 }
 
 start();
