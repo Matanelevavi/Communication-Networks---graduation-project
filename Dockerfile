@@ -1,6 +1,6 @@
 # WeatherWear: four network servers and the website, in one container.
 # Only the HTTP port is published; DHCP, DNS, TCP and RUDP stay on loopback.
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
