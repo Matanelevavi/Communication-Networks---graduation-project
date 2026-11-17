@@ -55,7 +55,7 @@ fast retransmit שחוצה אותו, ובקרת זרימה שמגבילה אות
 ## אבטחה
 
 * **Fuzzing** לכל מפענח רשת (Hypothesis) מצא שלושה באגים אמיתיים, שכל אחד מהם הוא היום בדיקת רגרסיה.
-* **ב-CI בכל push**: ‏Bandit,‏ pip-audit,‏ CodeQL ו-gitleaks על כל ההיסטוריה, ו-Dependabot.
+* **ב-CI בכל push**: ‏Bandit,‏ pip-audit,‏ CodeQL,‏ Trivy על קובץ ה-image ו-gitleaks על כל ההיסטוריה, ו-Dependabot.
 * **הקשחה**: אימות קלט, הגבלת קצב לכל מבקר, הגבלת גודל בקשה, תקרות לחוטים ולחיבורים, הגנה מפני
   path traversal, ו-CSP ו-HSTS.
 * מודל איומים עם 25 איומים והמענה לכל אחד: [SECURITY.md](SECURITY.md).

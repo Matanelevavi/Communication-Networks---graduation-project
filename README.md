@@ -116,9 +116,9 @@ with 25 threats and the mitigation for each, are in [SECURITY.md](SECURITY.md).
 
 * **Fuzzing** every network parser with Hypothesis found three real bugs (one datagram could stop
   the DHCP server; the packet parser accepted non-canonical headers), each now a regression test.
-* **In CI on every push**: Bandit, pip-audit, CodeQL and gitleaks over the full history, with
-  Dependabot watching dependencies. The container image was scanned with Trivy, which led to
-  patching its operating system packages at build time.
+* **In CI on every push**: Bandit, pip-audit, CodeQL, Trivy on the container image, and gitleaks
+  over the full history, with Dependabot watching dependencies. Trivy's first finding led to
+  patching the image's operating system packages at build time.
 * **Hardening**: input validation at the edge, per-visitor rate limits (separate budgets for
   forecasts, search and the lab), request size limits, thread and connection caps, a deadline
   against slow clients, path traversal guards, and CSP, HSTS and related headers.
