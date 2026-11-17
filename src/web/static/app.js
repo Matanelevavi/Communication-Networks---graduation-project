@@ -252,6 +252,9 @@ const $ = (selector) => document.querySelector(selector);
 const state = {
   lang: store.get("lang", navigator.language?.startsWith("he") ? "he" : "en"),
   people: store.get("people", null),
+  // The example family follows the page's language until the visitor edits it:
+  // English names on an English page, Hebrew names on a Hebrew one.
+  peopleAreExamples: store.get("people", null) === null,
   units: store.get("units", "c"),            // "c" or "f"
   lastCard: null,
   stale: null,                               // "saved" or "offline" while an old forecast is on screen
@@ -361,7 +364,7 @@ function defaultPeople() {
 }
 
 function renderPeople() {
-  if (state.people === null) state.people = defaultPeople();
+  if (state.people === null || state.peopleAreExamples) state.people = defaultPeople();
   const list = $("#people");
   list.replaceChildren();
 
@@ -387,6 +390,7 @@ function renderPeople() {
     remove.setAttribute("aria-label", `${t("remove_person")} ${person.name}`);
 
     const save = () => {
+      state.peopleAreExamples = false;
       state.people[index] = { name: name.value.trim(), age_category: age.value, notes: notes.value.trim() };
       store.set("people", state.people);
     };
@@ -394,6 +398,7 @@ function renderPeople() {
     notes.addEventListener("input", save);
     age.addEventListener("change", save);
     remove.addEventListener("click", () => {
+      state.peopleAreExamples = false;
       state.people.splice(index, 1);
       store.set("people", state.people);
       renderPeople();
@@ -404,6 +409,7 @@ function renderPeople() {
 }
 
 function addPerson() {
+  state.peopleAreExamples = false;
   state.people.push({ name: "", age_category: "adult", notes: "" });
   store.set("people", state.people);
   renderPeople();
@@ -951,7 +957,27 @@ async function copyAdvice() {
 function shareText() {
   const card = state.lastCard?.forecast;
   if (!card) return "";
-  return `${card.city}: ${degrees(card.min_temp)}–${degrees(card.max_temp)}\n${card.advice}\n${location.origin}${location.pathname}`;
+  const link = `${location.origin}${location.pathname}` + (card.city ? `#city=${encodeURIComponent(card.city)}` : "");
+  return `${card.city || t("my_location")}: ${degrees(card.min_temp)}–${degrees(card.max_temp)}\n${card.advice}\n${link}`;
+}
+
+/**
+ * A link that opens on a forecast: #city=Haifa&lang=en&theme=dark&units=f.
+ *
+ * Every part is optional and none of it is saved: a link someone sent you
+ * changes what this page shows, not your own settings. The city is treated
+ * exactly like typed text, and the server validates it the same way.
+ */
+function readDeepLink() {
+  if (!location.hash || location.hash.startsWith("#lab")) return null;
+  const params = new URLSearchParams(location.hash.slice(1));
+  const link = {
+    city: (params.get("city") || "").trim().slice(0, 80),
+    lang: ["he", "en"].includes(params.get("lang")) ? params.get("lang") : null,
+    theme: ["light", "dark"].includes(params.get("theme")) ? params.get("theme") : null,
+    units: ["c", "f"].includes(params.get("units")) ? params.get("units") : null,
+  };
+  return link.city || link.lang || link.theme || link.units ? link : null;
 }
 
 async function shareAdvice() {
@@ -1625,6 +1651,18 @@ function start() {
   applyLanguage();
   startLab();
   setupInstall();
+
+  const link = readDeepLink();
+  if (link) {
+    if (link.theme) applyTheme(link.theme);
+    if (link.units) state.units = link.units;
+    if (link.lang && link.lang !== state.lang) { state.lang = link.lang; applyLanguage(); }
+    if (link.city) {
+      $("#city").value = link.city;
+      submitForecast();
+      return;
+    }
+  }
 
   // Open on the last forecast instead of an empty page; a button press refreshes it.
   if (!location.hash.startsWith("#lab")) showSaved("saved");
