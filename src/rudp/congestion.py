@@ -3,7 +3,7 @@ Congestion control for RUDP.
 
 Kept apart from the socket code on purpose: the window algorithm is pure
 arithmetic over three numbers, so it can be reasoned about and tested without
-a network.  The scheme follows the two phase model from the course, the same
+a network.  The scheme is the classic two phase model, the same
 one TCP Reno uses.
 
     cwnd < ssthresh   ->  slow start          cwnd += 1 per ACK   (x2 per RTT)
