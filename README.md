@@ -10,7 +10,7 @@ written from scratch: DHCP, DNS, TCP and a reliable protocol built on top of UDP
 **Try it: [weatherwear-s7pl.onrender.com](https://weatherwear-s7pl.onrender.com)**
 <sub>(free hosting: the first visit after a quiet spell can take up to a minute to wake the server)</sub>
 
-[עברית](README.he.md) · [How it works, in depth](docs/architecture.md) · [Security](SECURITY.md)
+[How it works, in depth](docs/architecture.md) · [Security](SECURITY.md) · [Hebrew / עברית](README.he.md)
 
 <p align="center">
   <img src="docs/screenshots/forecast.png" alt="A forecast for Haifa: the next 24 hours as a chart, the week, wind and UV, what to bring, and written advice for each family member" width="68%">
