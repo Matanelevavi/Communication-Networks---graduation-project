@@ -39,7 +39,7 @@ URL = "https://api.met.no/weatherapi/locationforecast/2.0/complete"
 PROVIDER = "MET Norway"
 # Their terms ask for an identifying agent with a way to reach the operator.
 USER_AGENT = ("WeatherWear/2.0 "
-              "(+https://github.com/Matanelevavi/Communication-Networks---graduation-project)")
+              "(+https://github.com/Matanelevavi/weatherwear)")
 
 MIN_RAIN_MM = 0.2          # an hour with at least this much counts as wet
 KMH_PER_MS = 3.6

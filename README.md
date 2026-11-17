@@ -1,8 +1,8 @@
 # WeatherWear
 
-[![ci](https://github.com/Matanelevavi/Communication-Networks---graduation-project/actions/workflows/ci.yml/badge.svg)](https://github.com/Matanelevavi/Communication-Networks---graduation-project/actions/workflows/ci.yml)
-[![security](https://github.com/Matanelevavi/Communication-Networks---graduation-project/actions/workflows/security.yml/badge.svg)](https://github.com/Matanelevavi/Communication-Networks---graduation-project/actions/workflows/security.yml)
-[![codeql](https://github.com/Matanelevavi/Communication-Networks---graduation-project/actions/workflows/codeql.yml/badge.svg)](https://github.com/Matanelevavi/Communication-Networks---graduation-project/actions/workflows/codeql.yml)
+[![ci](https://github.com/Matanelevavi/weatherwear/actions/workflows/ci.yml/badge.svg)](https://github.com/Matanelevavi/weatherwear/actions/workflows/ci.yml)
+[![security](https://github.com/Matanelevavi/weatherwear/actions/workflows/security.yml/badge.svg)](https://github.com/Matanelevavi/weatherwear/actions/workflows/security.yml)
+[![codeql](https://github.com/Matanelevavi/weatherwear/actions/workflows/codeql.yml/badge.svg)](https://github.com/Matanelevavi/weatherwear/actions/workflows/codeql.yml)
 
 **A weather forecast that tells your family what to wear, delivered over a network stack
 written from scratch: DHCP, DNS, TCP and a reliable protocol built on top of UDP.**
@@ -170,3 +170,5 @@ More in [SECURITY.md](SECURITY.md#known-limitations).
 ## Author
 
 **Matanel Levavi** · [GitHub](https://github.com/Matanelevavi)
+
+Released under the [MIT License](LICENSE).
