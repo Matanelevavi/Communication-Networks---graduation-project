@@ -1,7 +1,7 @@
 # requests reaches Open-Meteo and the Gemini API; fastapi and uvicorn serve
 # the website. Everything else (socket, threading, json, zlib, tkinter) is in
 # the Python standard library.
-requests>=2.31,<3
+requests>=2.34.2,<3
 fastapi>=0.115,<1
 uvicorn>=0.30,<1
 # the time zone database, which Windows and slim container images do not ship
