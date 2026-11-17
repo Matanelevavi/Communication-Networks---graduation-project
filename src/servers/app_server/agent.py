@@ -32,9 +32,13 @@ class FileAgent:
         return self.store.folder
 
     # -------------------------------------------------------------- cache
-    def cached_forecast(self, city: str) -> dict | None:
+    def cached_forecast(self, city: str, max_age: float | None = None) -> dict | None:
         """A recent forecast for a city, as stored data, or ``None``."""
-        return self.cache.get(city)
+        return self.cache.get(city, max_age) if max_age is not None else self.cache.get(city)
+
+    def forecast_age(self, city: str) -> float | None:
+        """How many seconds old the stored forecast for a city is, if there is one."""
+        return self.cache.age(city)
 
     def store_forecast(self, city: str, forecast: dict) -> bool:
         """Store the weather for a city. Never the advice, which is per family."""

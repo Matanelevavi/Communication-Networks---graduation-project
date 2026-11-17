@@ -158,37 +158,46 @@ class TestForecastData(unittest.TestCase):
             Forecast.from_dict({"city": "Ariel"})
 
 
-@patch("src.servers.app_server.weather_api.requests.get")
 class TestCsvReport(unittest.TestCase):
+    """The archive's report is written from the hours already fetched."""
 
-    def test_a_successful_download(self, get):
-        get.return_value.status_code = 200
-        get.return_value.content = b"time,temperature_2m\n2026-03-04T12:00,20.5"
+    HOURS = [{"t": "2026-03-04T12:00", "temp": 20.5, "rain": 10, "code": 1},
+             {"t": "2026-03-04T13:00", "temp": 21.0, "rain": None, "code": 2}]
 
-        report = WeatherService().download_csv_report(Place("Ariel", 32.0, 34.0))
+    def forecast(self, hourly):
+        return Forecast(Place("Ariel", 32.0, 34.0), 20, 21, 20.5, "No rain expected", hourly=hourly)
 
-        self.assertEqual(report, b"time,temperature_2m\n2026-03-04T12:00,20.5")
+    def test_the_report_is_the_hourly_series(self):
+        report = self.forecast(self.HOURS).to_csv().decode()
 
-    def test_the_report_uses_the_same_hours_as_the_forecast(self, get):
-        """It used to be in GMT while the summary on screen was in local time."""
-        get.return_value.status_code = 200
+        self.assertEqual(report.splitlines(), [
+            "time,temperature_2m,precipitation_probability",
+            "2026-03-04T12:00,20.5,10",
+            "2026-03-04T13:00,21.0,"])
 
-        WeatherService().download_csv_report(Place("Ariel", 32.0, 34.0))
+    def test_the_archive_can_still_read_it(self):
+        from src.servers.app_server.file_archive import FileArchive
 
-        params = get.call_args[1]["params"]
-        self.assertEqual(params["timezone"], "auto")
-        self.assertEqual(params["forecast_hours"], 24)
+        table = FileArchive.format_csv("report.csv", self.forecast(self.HOURS).to_csv().decode())
 
-    def test_a_rejected_download_returns_nothing(self, get):
-        get.return_value.status_code = 404
+        self.assertIn("2026-03-04  12:00", table)
+        self.assertIn("20.5", table)
 
-        self.assertIsNone(WeatherService().download_csv_report(Place("Ariel", 32.0, 34.0)))
+    def test_no_hours_is_a_header_and_nothing_else(self):
+        self.assertEqual(self.forecast([]).to_csv().decode().strip(),
+                         "time,temperature_2m,precipitation_probability")
 
-    def test_a_network_error_returns_nothing(self, get):
-        get.side_effect = requests.RequestException("boom")
+    @patch("src.servers.app_server.weather_api.requests.get")
+    def test_a_forecast_costs_one_request_for_a_chosen_place_and_two_for_a_name(self, get):
+        """The free API limits requests per address, so none are spent on the archive."""
+        get.side_effect = [response(HOURLY)]
+        WeatherService().fetch_at("Ariel", 32.1, 35.2)
+        self.assertEqual(get.call_count, 1)
 
-        self.assertIsNone(WeatherService().download_csv_report(Place("Ariel", 32.0, 34.0)))
-
+        get.reset_mock()
+        get.side_effect = [response(GEOCODED), response(HOURLY)]
+        WeatherService().fetch("Tel Aviv")
+        self.assertEqual(get.call_count, 2)
 
 if __name__ == "__main__":
     unittest.main()

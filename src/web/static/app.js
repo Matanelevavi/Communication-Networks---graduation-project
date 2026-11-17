@@ -110,6 +110,7 @@ const STRINGS = {
     week_title: "The week", today: "Today",
     stale_saved: (when) => `Saved forecast from ${when}. Press the button for a fresh one.`,
     stale_offline: (when) => `You are offline. Showing the forecast saved ${when}.`,
+    stale_provider: (when) => `The weather provider is busy right now, so this is the last forecast we have, from ${when}.`,
     install_app: "Install", unit_kmh: "km/h", unit_mph: "mph",
     chips: ["Tel Aviv", "Jerusalem", "Haifa", "Ariel", "Beersheba", "Eilat"],
     lang_button: "עב", lang_label: "עברית", theme_label: "Switch theme",
@@ -213,8 +214,9 @@ const STRINGS = {
     hourly_aria: (lo, hi, rain) => `הטמפרטורה ב-24 השעות הקרובות, מ-${lo} עד ${hi}. הסיכוי הגבוה ביותר לגשם ${rain}%. אפשר לנוע לאורכה עם חיצי המקלדת.`,
     hourly_readout: (hour, temp, rain) => `${hour}  ·  ${temp}  ·  גשם ${rain}%`,
     week_title: "השבוע", today: "היום",
-    stale_saved: (when) => `תחזית שמורה מ${when}. לחצו על הכפתור לתחזית עדכנית.`,
-    stale_offline: (when) => `אין חיבור לאינטרנט. מוצגת התחזית ששמורה מ${when}.`,
+    stale_saved: (when) => `תחזית שמורה (${when}). לחצו על הכפתור לתחזית עדכנית.`,
+    stale_offline: (when) => `אין חיבור לאינטרנט. מוצגת התחזית ששמורה אצלכם (${when}).`,
+    stale_provider: (when) => `ספק מזג האוויר עמוס כרגע, אז זו התחזית האחרונה שיש לנו (${when}).`,
     install_app: "התקנה", unit_kmh: "קמ\"ש", unit_mph: "מייל לשעה",
     chips: ["תל אביב", "ירושלים", "חיפה", "אריאל", "באר שבע", "אילת"],
     lang_button: "EN", lang_label: "English", theme_label: "החלפת ערכת צבעים",
@@ -476,7 +478,7 @@ async function submitForecast(event) {
     if (!state.chosenPlace?.private) remember(city);
     renderChips();
     state.lastCard = body;
-    state.stale = null;
+    state.stale = typeof body.forecast.stale_minutes === "number" ? "provider" : null;
     saveLast(body);
     renderForecast(body.forecast, body.transfer);
     revealResult();
@@ -831,17 +833,39 @@ function showSaved(reason) {
 
 // The banner above a forecast that is not fresh. It is state, not an event, so
 // that switching language or units does not make it disappear.
+// "2 hours ago". Hebrew is written out by hand: the browser's own Hebrew data
+// appends the number to the dual forms ("לפני שעתיים (2)"), which reads as a typo.
+function agoText(minutes) {
+  const hours = Math.round(minutes / 60), days = Math.round(minutes / 1440);
+  if (state.lang === "he") {
+    if (minutes < 1) return "הרגע";
+    if (minutes < 60) return minutes === 1 ? "לפני דקה" : `לפני ${minutes} דקות`;
+    if (minutes < 1440) return hours === 1 ? "לפני שעה" : hours === 2 ? "לפני שעתיים" : `לפני ${hours} שעות`;
+    return days === 1 ? "אתמול" : days === 2 ? "שלשום" : `לפני ${days} ימים`;
+  }
+  const relative = new Intl.RelativeTimeFormat(state.lang, { numeric: "auto" });
+  return minutes < 60 ? relative.format(-minutes, "minute")
+    : minutes < 1440 ? relative.format(-hours, "hour")
+      : relative.format(-days, "day");
+}
+
 function renderStale() {
   const banner = $("#fc-stale");
   const saved = store.get("last", null);
-  if (!state.stale || !saved) { banner.hidden = true; return; }
+
+  // The weather provider was busy and the server sent the last forecast it had.
+  const providerAge = state.lastCard?.forecast?.stale_minutes;
+  if (state.stale === "provider" && typeof providerAge === "number") {
+    banner.textContent = t("stale_provider", agoText(providerAge));
+    banner.className = "stale";
+    banner.hidden = false;
+    return;
+  }
+
+  if (!state.stale || state.stale === "provider" || !saved) { banner.hidden = true; return; }
 
   const minutes = Math.max(0, Math.round((Date.now() - saved.savedAt) / 60000));
-  const relative = new Intl.RelativeTimeFormat(state.lang, { numeric: "auto" });
-  const when = minutes < 60 ? relative.format(-minutes, "minute")
-    : minutes < 1440 ? relative.format(-Math.round(minutes / 60), "hour")
-      : relative.format(-Math.round(minutes / 1440), "day");
-  banner.textContent = t(state.stale === "offline" ? "stale_offline" : "stale_saved", when);
+  banner.textContent = t(state.stale === "offline" ? "stale_offline" : "stale_saved", agoText(minutes));
   banner.className = `stale${state.stale === "offline" ? " stale--offline" : ""}`;
   banner.hidden = false;
 }

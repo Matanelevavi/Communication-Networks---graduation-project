@@ -9,8 +9,9 @@ from src.servers.app_server.router import RequestRouter, clean_profiles
 from src.servers.app_server.weather_api import Forecast, Place
 
 PLACE = Place("Ariel", 32.1, 35.1)
+HOURS = [{"t": "2026-10-29T12:00", "temp": 25.0, "rain": 0, "code": 1}]
 FORECAST = Forecast(PLACE, min_temp=18, max_temp=30,
-                    current_temp=25, rain_summary="No rain expected")
+                    current_temp=25, rain_summary="No rain expected", hourly=HOURS)
 
 
 class RouterTestCase(unittest.TestCase):
@@ -22,7 +23,6 @@ class RouterTestCase(unittest.TestCase):
 
         self.agent.cached_forecast.return_value = None
         self.weather.fetch.return_value = FORECAST
-        self.weather.download_csv_report.return_value = b"csv"
         self.advisor.recommend.return_value = Advice("Wear a hat", LOCAL)
 
     def forecast_card(self, request=None):
@@ -55,6 +55,13 @@ class TestRouting(RouterTestCase):
         """JSON can be a list or a number; that used to raise AttributeError."""
         for request in ([1, 2], "FORECAST", 7, None):
             self.assertTrue(self.router.handle(request).startswith("Error:"))
+
+    def test_an_action_that_is_not_a_string_is_unknown_not_a_crash(self):
+        """Found by fuzzing: a list or an object cannot be looked up in a dict."""
+        for action in ([], {}, [1], {"a": 1}, 5, None, True, 1.5):
+            self.assertEqual(self.router.handle({"action": action}),
+                             "Error: Unknown action requested.")
+        self.weather.fetch.assert_not_called()
 
     def test_a_download_without_a_filename(self):
         answer = self.router.handle({"action": "FTP_GET"})
@@ -124,7 +131,8 @@ class TestForecast(RouterTestCase):
         self.assertEqual(stored, FORECAST.to_dict())
         self.assertNotIn("advice", stored)
         self.assertNotIn("Dana", json.dumps(stored))
-        self.agent.store_report.assert_called_once_with("Ariel", b"csv")
+        # the archive report is written from the hours already fetched
+        self.agent.store_report.assert_called_once_with("Ariel", FORECAST.to_csv())
 
     def test_a_missing_city_is_reported(self):
         """This used to raise AttributeError inside the worker thread."""
@@ -192,8 +200,8 @@ class TestFailuresAreNeverCached(RouterTestCase):
         self.advisor.recommend.assert_not_called()
         self.agent.store_forecast.assert_not_called()
 
-    def test_a_missing_report_still_stores_the_forecast(self):
-        self.weather.download_csv_report.return_value = None
+    def test_a_forecast_without_hours_is_stored_and_has_no_report(self):
+        self.weather.fetch.return_value = Forecast(PLACE, 18, 30, 25, "No rain expected")
 
         self.router.handle({"action": "FORECAST", "city": "Ariel"})
 

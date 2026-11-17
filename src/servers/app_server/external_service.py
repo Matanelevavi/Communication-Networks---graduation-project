@@ -21,6 +21,20 @@ class ServiceError(Exception):
     """
 
 
+class ProviderUnavailable(ServiceError):
+    """
+    The outside service could not answer: unreachable, erroring, or refusing us.
+
+    Different from "that city does not exist", which no earlier answer can
+    stand in for. After this one, the last forecast we did get is still better
+    than an error message.
+    """
+
+
+class RateLimited(ProviderUnavailable):
+    """The provider answered HTTP 429: too many requests from this address."""
+
+
 class ExternalService:
     """Base for an HTTP client that depends on a service outside the project."""
 

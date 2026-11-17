@@ -2,24 +2,35 @@
 Open-Meteo client.
 
 Two calls make a forecast: geocoding turns a city name into coordinates, and
-the forecast endpoint returns the next 24 hours for them.  A third call fetches
-the same data as CSV for the archive.
+the forecast endpoint returns the next 24 hours and the next week for them. A
+place chosen from the suggestions already has coordinates, so it costs one.
 
-Both forecast requests ask for ``forecast_hours`` rather than a calendar day,
-so the 24 hours start at the current hour: a forecast fetched in the evening
-does not warn about rain that fell that morning.  Both also ask for the city's
-own time zone, so the CSV in the archive and the summary on screen name the
-same hours.
+The free API limits requests per address, and a shared host shares one address
+among many apps, so calls are kept to the minimum: the archive's CSV report is
+written from the hourly data already in hand, not fetched again, and after an
+HTTP 429 the client stands down for a while instead of prolonging the limit.
+
+The request asks for ``forecast_hours`` rather than a calendar day, so the 24
+hours start at the current hour: a forecast fetched in the evening does not
+warn about rain that fell that morning. It also asks for the city's own time
+zone, so every hour on screen and in the archive is local.
 """
 import logging
+import time
 from dataclasses import dataclass, field
 
 import requests
 
-from src.config import HTTP_TIMEOUT
-from src.servers.app_server.external_service import ExternalService, ServiceError
+from src.config import HTTP_TIMEOUT, OPEN_METEO_API_KEY
+from src.servers.app_server.external_service import (ExternalService, ProviderUnavailable,
+                                                     RateLimited, ServiceError)
 
 log = logging.getLogger(__name__)
+
+RATE_LIMITED_MESSAGE = ("The weather provider is receiving too many requests right now. "
+                        "Please try again in a few minutes.")
+BACKOFF_SECONDS = 60.0
+MAX_BACKOFF_SECONDS = 600.0
 
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
@@ -99,6 +110,20 @@ class Forecast:
     hourly: list = field(default_factory=list)     # [{"t", "temp", "rain", "code"}]
     daily: list = field(default_factory=list)      # [{"date", "code", "min", "max", ...}]
 
+    def to_csv(self) -> bytes:
+        """
+        The hourly series as CSV, for the archive.
+
+        Written from data already fetched. It used to be a second request to the
+        provider for the same hours, which doubled the load on a shared address
+        for a file nobody needed to be fresher than the forecast beside it.
+        """
+        rows = ["time,temperature_2m,precipitation_probability"]
+        for hour in self.hourly:
+            rain = "" if hour.get("rain") is None else hour["rain"]
+            rows.append(f"{hour['t']},{hour['temp']},{rain}")
+        return ("\n".join(rows) + "\n").encode("utf-8")
+
     @property
     def peak_wind_kmh(self) -> float:
         """The stronger of the wind now and today's strongest gust of it, in km/h."""
@@ -154,6 +179,13 @@ class Forecast:
 
 class WeatherService(ExternalService):
     """Fetches forecasts from Open-Meteo."""
+
+    def __init__(self, api_key: str = OPEN_METEO_API_KEY, clock=time.monotonic) -> None:
+        # Optional. The free API limits requests per address, and a shared host
+        # shares one address among many apps; a key lifts that for a paying user.
+        self.api_key = api_key
+        self.clock = clock
+        self._blocked_until = 0.0
 
     def fetch(self, city_name: str) -> Forecast:
         """Resolve a city and return its forecast.  Raises :class:`ServiceError`."""
@@ -300,50 +332,56 @@ class WeatherService(ExternalService):
         ]
         return ", ".join(alerts) if alerts else "No rain expected"
 
-    # ------------------------------------------------------------------ csv
-    def download_csv_report(self, place: Place) -> bytes | None:
-        """The raw hourly data as CSV, for the archive.  ``None`` if unavailable."""
-        try:
-            log.info(f"Downloading CSV weather report for {place.name}")
-            response = requests.get(FORECAST_URL, timeout=HTTP_TIMEOUT, params={
-                "latitude": place.latitude,
-                "longitude": place.longitude,
-                "hourly": "temperature_2m,precipitation_probability",
-                "forecast_hours": FORECAST_HOURS,
-                "timezone": "auto",
-                "format": "csv",
-            })
-        except requests.RequestException as e:
-            log.error(f"HTTP download error: {e}")
-            return None
-
-        if response.status_code != 200:
-            log.warning(f"Failed to download CSV, status {response.status_code}")
-            return None
-
-        log.info("CSV file downloaded successfully")
-        return response.content
-
     # --------------------------------------------------------------- shared
-    @staticmethod
-    def _get(url: str, params: dict) -> dict:
+    def _get(self, url: str, params: dict) -> dict:
         """One GET returning JSON, with every failure turned into ServiceError."""
+        # After a 429 every further request only prolongs it, and the same
+        # shared address is asking on behalf of everyone: stand down for a while.
+        wait = self._blocked_until - self.clock()
+        if wait > 0:
+            raise RateLimited(RATE_LIMITED_MESSAGE)
+
+        if self.api_key:
+            url = url.replace("//api.", "//customer-api.").replace("//geocoding-api.", "//customer-geocoding-api.")
+            params = {**params, "apikey": self.api_key}
+
         try:
             response = requests.get(url, params=params, timeout=HTTP_TIMEOUT)
         except requests.RequestException as e:
             log.error(f"Weather service unreachable: {e}")
-            raise ServiceError("Could not reach the weather service.") from e
+            raise ProviderUnavailable("Could not reach the weather service.") from e
 
         # Checked before the body is read: Open-Meteo answers a bad request
         # with a JSON error object, which would otherwise read as "not found".
         if not response.ok:
-            log.error(f"Weather service answered HTTP {response.status_code}")
-            raise ServiceError("The weather service is unavailable right now, "
-                               "please try again shortly.")
+            reason = self._reason(response)
+            log.error(f"Weather service answered HTTP {response.status_code}: {reason}")
+            if response.status_code == 429:
+                self._blocked_until = self.clock() + self._retry_after(response)
+                raise RateLimited(RATE_LIMITED_MESSAGE)
+            raise ProviderUnavailable("The weather service is unavailable right now, "
+                                      "please try again shortly.")
 
         try:
             return response.json()
         except ValueError as e:
             log.error(f"Weather service returned invalid JSON: {e}")
-            raise ServiceError("The weather service returned "
-                               "an unexpected answer.") from e
+            raise ProviderUnavailable("The weather service returned "
+                                      "an unexpected answer.") from e
+
+    @staticmethod
+    def _reason(response) -> str:
+        """What the provider said was wrong, for the log: it names which limit was hit."""
+        try:
+            return str(response.json().get("reason", ""))[:200]
+        except (ValueError, AttributeError):
+            return ""
+
+    @staticmethod
+    def _retry_after(response) -> float:
+        """How long to stand down: what the provider asked for, within sensible bounds."""
+        try:
+            asked = float(response.headers.get("Retry-After", ""))
+        except (TypeError, ValueError, AttributeError):
+            asked = BACKOFF_SECONDS
+        return min(max(asked, 10.0), MAX_BACKOFF_SECONDS)

@@ -52,6 +52,14 @@ browser and again on the server, cached under a hashed name that the public arch
 neither lists nor serves, never offered back as a shortcut, and no report is archived
 for it.
 
+**When the weather provider is busy.** The free Open-Meteo API limits requests per address, and a free
+host shares one address among many apps, so the deployed site was at one point answered with HTTP 429
+at low traffic. The server now keeps its calls to a minimum (a chosen place costs one request; the
+archive's CSV is written from the hours already fetched), stands down for a while after a 429 instead of
+prolonging it, and, if it has an earlier forecast for the place (up to six hours old), serves that with a
+banner saying so instead of an error. An unknown city gets no such stand-in. A paid key can be set with
+`OPEN_METEO_API_KEY` to lift the limit altogether.
+
 **Installable and forgiving offline.** It is a progressive web app: a manifest, icons
 (rendered by `tools/make_icons.py`) and a service worker that keeps the page itself
 available without a connection. The service worker never touches `/api`; a forecast is

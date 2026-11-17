@@ -27,7 +27,6 @@ class PlacesTestCase(unittest.TestCase):
         self.weather = MagicMock()
         self.weather.fetch.return_value = FORECAST
         self.weather.fetch_at.return_value = FORECAST
-        self.weather.download_csv_report.return_value = b"csv"
         self.advisor = MagicMock()
         self.advisor.recommend.return_value = Advice("Wear a hat", LOCAL)
         self.agent = MagicMock()
@@ -108,7 +107,6 @@ class TestSharedPositions(PlacesTestCase):
         self.card(lat=32.123, lon=35.456)
 
         self.agent.store_report.assert_not_called()
-        self.weather.download_csv_report.assert_not_called()
 
     def test_the_card_has_no_name_for_the_page_to_fill_in(self):
         self.weather.fetch_at.return_value = Forecast(Place("", 32.12, 35.46), 18, 30, 25,

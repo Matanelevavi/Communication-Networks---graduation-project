@@ -17,10 +17,10 @@ import logging
 import math
 import time
 
-from src.config import MAX_PROFILE_FIELD, MAX_PROFILES
+from src.config import MAX_PROFILE_FIELD, MAX_PROFILES, STALE_FORECAST_MAX_AGE
 from src.servers.app_server.advisor import ClothingAdvisor
 from src.servers.app_server.agent import FileAgent
-from src.servers.app_server.external_service import ServiceError
+from src.servers.app_server.external_service import ProviderUnavailable, ServiceError
 from src.servers.app_server.forecast_cache import PRIVATE_PREFIX
 from src.servers.app_server.gear import gear_for
 from src.servers.app_server.weather_api import Forecast, Place, WeatherService
@@ -90,7 +90,9 @@ class RequestRouter:
             return f"{ERROR_PREFIX}a request must be a JSON object."
 
         action = request.get("action", "FORECAST")
-        handler = self.actions.get(action)
+        # A JSON list or object is not hashable, so looking it up in a dict
+        # would raise: found by fuzzing, with {"action": []}.
+        handler = self.actions.get(action) if isinstance(action, str) else None
         if handler is None:
             return UNKNOWN_ACTION
 
@@ -108,14 +110,17 @@ class RequestRouter:
         if not city and coordinates is None:
             return f"{ERROR_PREFIX}FORECAST requires a city name."
 
-        forecast, cached = self._weather_for(city, coordinates)
+        forecast, cached, stale_minutes = self._weather_for(city, coordinates)
         profiles = clean_profiles(request.get("profiles"))
         language = request.get("lang") if request.get("lang") in LANGUAGES else None
         hint = {} if language is None else {"language": language}
 
         advice = self.advisor.recommend(forecast, profiles, **hint)
-        card = self.build_card(forecast, advice, gear_for(forecast, profiles))
-        return json.dumps({**card, "cached": cached}, ensure_ascii=False)
+        card = {**self.build_card(forecast, advice, gear_for(forecast, profiles)),
+                "cached": cached}
+        if stale_minutes is not None:
+            card["stale_minutes"] = stale_minutes     # the provider failed; this is the last good one
+        return json.dumps(card, ensure_ascii=False)
 
     @staticmethod
     def _coordinates(request: dict) -> tuple[float, float] | None:
@@ -155,29 +160,61 @@ class RequestRouter:
         digest = hashlib.sha256(f"{lat},{lon}".encode()).hexdigest()[:16]
         return f"{PRIVATE_PREFIX}{digest}"
 
-    def _weather_for(self, city: str, coordinates=None) -> tuple[Forecast, bool]:
-        """The forecast for a place, from the cache when it is recent enough."""
+    def _weather_for(self, city: str, coordinates=None) -> tuple[Forecast, bool, int | None]:
+        """
+        The forecast for a place: ``(forecast, from the cache, minutes stale)``.
+
+        From the cache when it is recent enough. If the provider cannot answer,
+        the last forecast it did give, up to six hours old, is returned and
+        marked stale, so a busy provider costs the visitor a banner and not the
+        whole answer. A city that does not exist is a different failure and gets
+        no such fallback.
+        """
         key = self._cache_key(city, coordinates)
         stored = self.agent.cached_forecast(key)
         if stored:
             try:
-                forecast = Forecast.from_dict(stored)
-                if coordinates is not None:      # shown under this visitor's own label
-                    forecast = dataclasses.replace(forecast, place=Place(city, *coordinates))
-                return forecast, True
+                return self._from_stored(stored, city, coordinates), True, None
             except (KeyError, TypeError):
                 log.warning(f"Cache entry for '{key}' is incomplete or old, refetching")
 
-        if coordinates is None:
-            forecast = self.weather.fetch(city)
-        else:
-            forecast = self.weather.fetch_at(city, *coordinates)
+        try:
+            if coordinates is None:
+                forecast = self.weather.fetch(city)
+            else:
+                forecast = self.weather.fetch_at(city, *coordinates)
+        except ProviderUnavailable:
+            stale = self._stale(key, city, coordinates)
+            if stale is None:
+                raise
+            return stale
+
         # Only reached when the lookup succeeded, so nothing but real weather
         # is written to disk, and never the advice, which is per family.
         self.agent.store_forecast(key, forecast.to_dict())
         if not key.startswith(PRIVATE_PREFIX):
             self._archive_report(key, forecast)
-        return forecast, False
+        return forecast, False, None
+
+    @staticmethod
+    def _from_stored(stored: dict, city: str, coordinates) -> Forecast:
+        forecast = Forecast.from_dict(stored)
+        if coordinates is not None:              # shown under this visitor's own label
+            forecast = dataclasses.replace(forecast, place=Place(city, *coordinates))
+        return forecast
+
+    def _stale(self, key: str, city: str, coordinates) -> tuple[Forecast, bool, int] | None:
+        """The last forecast for this place, however old within the limit, or ``None``."""
+        stored = self.agent.cached_forecast(key, max_age=STALE_FORECAST_MAX_AGE)
+        if not stored:
+            return None
+        try:
+            forecast = self._from_stored(stored, city, coordinates)
+        except (KeyError, TypeError):
+            return None
+        minutes = int((self.agent.forecast_age(key) or 0) // 60)
+        log.warning(f"Provider unavailable: serving '{key}' from {minutes} minutes ago")
+        return forecast, True, minutes
 
     @staticmethod
     def build_card(forecast: Forecast, advice, gear: list[str] | None = None) -> dict:
@@ -205,9 +242,9 @@ class RequestRouter:
         }
 
     def _archive_report(self, city: str, forecast: Forecast) -> None:
-        csv_bytes = self.weather.download_csv_report(forecast.place)
-        if csv_bytes:
-            self.agent.store_report(city, csv_bytes)
+        # Written from the hours already in hand: no second request to the provider.
+        if forecast.hourly:
+            self.agent.store_report(city, forecast.to_csv())
 
     # -------------------------------------------------------------- search
     def search(self, request: dict) -> str:

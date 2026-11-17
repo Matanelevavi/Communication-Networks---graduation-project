@@ -49,15 +49,27 @@ class ForecastCache:
     def filename(city: str) -> str:
         return f"{city_key(city)}{SUFFIX}"
 
-    def get(self, city: str) -> dict | None:
-        """A recent forecast for a city, or ``None`` if there is none."""
+    def age(self, city: str) -> float | None:
+        """Seconds since this city's forecast was stored, or ``None`` if there is none."""
+        modified = self.store.modified_at(self.filename(city))
+        return None if modified is None else max(0.0, time.time() - modified)
+
+    def get(self, city: str, max_age: float | None = None) -> dict | None:
+        """
+        A recent forecast for a city, or ``None`` if there is none.
+
+        ``max_age`` widens what counts as recent. The normal answer is the one
+        half an hour old; a caller whose provider has just failed asks for the
+        last one it ever got, within a limit, and says so to the user.
+        """
         name = self.filename(city)
-        modified = self.store.modified_at(name)
-        if modified is None:
+        age = self.age(city)
+        if age is None:
             return None
 
-        if time.time() - modified > self.ttl:
-            log.info(f"CACHE STALE: '{city}' is older than {self.ttl:.0f}s")
+        limit = self.ttl if max_age is None else max_age
+        if age > limit:
+            log.info(f"CACHE STALE: '{city}' is older than {limit:.0f}s")
             return None
 
         raw = self.store.read_bytes(name)

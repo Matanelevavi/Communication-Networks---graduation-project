@@ -105,6 +105,12 @@ REQUEST_READ_DEADLINE = 10.0        # seconds to receive a whole request, howeve
 # still means now.
 FORECAST_CACHE_TTL = 30 * 60
 
+# When the weather provider cannot answer, a forecast up to this old is still
+# shown, marked as such, rather than an error: yesterday's evening forecast
+# beats nothing on a morning the provider is busy, and six hours is short enough
+# that it is still a forecast and not a story about the past.
+STALE_FORECAST_MAX_AGE = 6 * 3600
+
 # Limits on the family description a client may send. It is copied into a
 # prompt and into the advice, so it is bounded like any other untrusted input.
 MAX_PROFILES = 10
@@ -119,6 +125,10 @@ MAX_PROFILE_FIELD = 40
 # revokes any it finds, so a hardcoded key stops working on its own. Put it in
 # a local .env file (git ignored) or in the environment.
 API_KEY = os.environ.get("GEMINI_API_KEY", "")
+
+# Optional too. Open-Meteo's free API limits requests per address, which on a
+# shared host is shared with strangers; a paid key lifts that limit.
+OPEN_METEO_API_KEY = os.environ.get("OPEN_METEO_API_KEY", "")
 
 # ------------------------------------------------------------ custom rudp ---
 RUDP_TIMEOUT = 3.0          # client-side timeout while waiting for the handshake ACK

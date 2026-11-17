@@ -54,6 +54,8 @@ behind it, because they are also run directly in the desktop client.
 | 19 | The place search used to hammer the upstream geocoder, or be used to amplify requests to it | Queries are 2 to 60 characters, answered from a bounded in-memory cache for an hour, and have a rate limit of their own that cannot starve forecasts | `RequestRouter.search`, `/api/search`, tested |
 | 20 | A service worker serving stale or private data | It handles only same-origin GETs of the page's own files, never anything under `/api`, and fetches from the network first so a new release is not hidden behind an old copy | `src/web/static/sw.js` |
 | 21 | Hostile coordinates | `lat` and `lon` must be finite numbers in range and arrive together, checked at the API and again in the router; nothing reaches the weather service otherwise | `ForecastRequest`, `RequestRouter._coordinates`, fuzzed |
+| 22 | The upstream provider throttles the shared address (HTTP 429) and takes the site down with it | Calls are minimised, a 429 starts a back-off during which the provider is not called, the last good forecast (at most six hours old, never for an unknown city) is served with a visible banner, and an optional paid key is supported | `WeatherService._get`, `RequestRouter._weather_for`, tested |
+| 23 | A request whose `action` is a list or object crashing the router | Only strings are looked up as actions; found by fuzzing and pinned by a test | `RequestRouter.handle` |
 
 ### What fuzzing found
 
