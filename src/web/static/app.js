@@ -25,7 +25,7 @@ const STRINGS = {
     submit: "Get my forecast", loading: "Checking the weather...",
     placeholder: "Pick a city to see the forecast and what to wear.",
     next_24: "Next 24 hours", now: "Now", low: "Low", high: "High", rain: "Rain",
-    rain_none: "None", rain_from: "From",
+    rain_none: "None", rain_from: "From ",
     what_to_wear: "What to wear",
     source_ai: "Written by AI", source_local: "Written by local rules", cached: "cached weather",
     copy: "Copy", copied: "Copied", share: "Share",
