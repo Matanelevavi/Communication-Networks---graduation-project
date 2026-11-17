@@ -193,6 +193,14 @@ class TestForecastApi(ApiTestCase):
         self.assertEqual(self.gateway.forecast.call_args[0][0], "Ariel")
         self.assertEqual(self.gateway.forecast.call_args[1], {"lat": 32.1, "lon": 35.2})
 
+    def test_the_time_zone_goes_to_the_gateway_and_an_absurd_one_is_refused(self):
+        self.gateway.forecast.return_value = (CARD, self.exchange(json.dumps(CARD)))
+
+        self.post(lat=32.1, lon=35.2, tz="Asia/Jerusalem")
+        self.assertEqual(self.gateway.forecast.call_args[1]["tz"], "Asia/Jerusalem")
+
+        self.assertEqual(self.post(tz="x" * 65).status_code, 422)
+
     def test_a_plain_city_request_is_still_exactly_the_old_call(self):
         self.gateway.forecast.return_value = (CARD, self.exchange(json.dumps(CARD)))
 

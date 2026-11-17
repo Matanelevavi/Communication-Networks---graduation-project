@@ -500,6 +500,9 @@ input[type="text"]:focus, select:focus { border-color: var(--brand); outline: no
   .day { grid-template-columns: 3.4em 1.8em 2.8em 2.6em minmax(40px, 1fr) 2.6em; gap: 6px; font-size: .92rem; }
 }
 
+.credit { margin: 0; color: var(--ink-faint); font-size: .85rem; }
+.credit a { color: inherit; }
+
 /* --------------------------------------------------------------------- lab */
 .layout--lab { grid-template-columns: minmax(0, 340px) minmax(0, 1fr); }
 .presets { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 16px; }

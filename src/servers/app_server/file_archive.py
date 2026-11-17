@@ -103,8 +103,10 @@ class FileArchive:
             elif FileArchive._is_data_row(line):
                 fields = line.split(",")
                 if len(fields) >= 3:
+                    # a provider that reports an amount, not a chance, leaves this empty
+                    chance = f"{fields[2].strip()}%" if fields[2].strip() else "-"
                     rows.append(f"{fields[0].replace('T', '  ')} | "
-                                f"{fields[1]}°C | {fields[2]}%")
+                                f"{fields[1]}°C | {chance}")
 
         log.info(f"Parsed CSV into a table for {filename}")
         return "\n".join(rows) + "\n"

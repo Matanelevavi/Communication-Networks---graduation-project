@@ -11,11 +11,13 @@ string that starts with ``Error:``, so the client has one rule for telling an
 error from a result.
 """
 import dataclasses
+import functools
 import hashlib
 import json
 import logging
 import math
 import time
+import zoneinfo
 
 from src.config import MAX_PROFILE_FIELD, MAX_PROFILES, STALE_FORECAST_MAX_AGE
 from src.servers.app_server.advisor import ClothingAdvisor
@@ -23,7 +25,8 @@ from src.servers.app_server.agent import FileAgent
 from src.servers.app_server.external_service import ProviderUnavailable, ServiceError
 from src.servers.app_server.forecast_cache import PRIVATE_PREFIX
 from src.servers.app_server.gear import gear_for
-from src.servers.app_server.weather_api import Forecast, Place, WeatherService
+from src.servers.app_server.weather_api import Forecast, Place
+from src.servers.app_server.weather_failover import FailoverWeather
 
 log = logging.getLogger(__name__)
 
@@ -63,16 +66,22 @@ def clean_profiles(raw) -> list[dict]:
     return profiles
 
 
+@functools.cache
+def known_zones() -> frozenset[str]:
+    """Every IANA time zone name this machine can use."""
+    return frozenset(zoneinfo.available_timezones())
+
+
 class RequestRouter:
     """Dispatches one request to the right piece of application logic."""
 
     def __init__(self,
-                 weather: WeatherService | None = None,
+                 weather: FailoverWeather | None = None,
                  advisor: ClothingAdvisor | None = None,
                  agent: FileAgent | None = None) -> None:
         # Injected rather than constructed inline, so a test can substitute any
         # of the three without touching the network or the file system.
-        self.weather = weather or WeatherService()
+        self.weather = weather or FailoverWeather()
         self.advisor = advisor or ClothingAdvisor()
         self.agent = agent or FileAgent()
 
@@ -110,7 +119,8 @@ class RequestRouter:
         if not city and coordinates is None:
             return f"{ERROR_PREFIX}FORECAST requires a city name."
 
-        forecast, cached, stale_minutes = self._weather_for(city, coordinates)
+        forecast, cached, stale_minutes = self._weather_for(city, coordinates,
+                                                            self._timezone(request))
         profiles = clean_profiles(request.get("profiles"))
         language = request.get("lang") if request.get("lang") in LANGUAGES else None
         hint = {} if language is None else {"language": language}
@@ -143,6 +153,18 @@ class RequestRouter:
         return round(lat, COORDINATE_DECIMALS), round(lon, COORDINATE_DECIMALS)
 
     @staticmethod
+    def _timezone(request: dict) -> str | None:
+        """
+        The time zone the visitor says the place is in, if it is a real one.
+
+        It only decides which hours a fallback provider's UTC timestamps are
+        written as, but it comes from the network, so it is accepted only if it
+        is the name of a zone that exists.
+        """
+        name = request.get("tz")
+        return name if isinstance(name, str) and name in known_zones() else None
+
+    @staticmethod
     def _cache_key(city: str, coordinates) -> str:
         """
         What a forecast is stored under.
@@ -160,7 +182,8 @@ class RequestRouter:
         digest = hashlib.sha256(f"{lat},{lon}".encode()).hexdigest()[:16]
         return f"{PRIVATE_PREFIX}{digest}"
 
-    def _weather_for(self, city: str, coordinates=None) -> tuple[Forecast, bool, int | None]:
+    def _weather_for(self, city: str, coordinates=None,
+                     tz: str | None = None) -> tuple[Forecast, bool, int | None]:
         """
         The forecast for a place: ``(forecast, from the cache, minutes stale)``.
 
@@ -182,7 +205,8 @@ class RequestRouter:
             if coordinates is None:
                 forecast = self.weather.fetch(city)
             else:
-                forecast = self.weather.fetch_at(city, *coordinates)
+                # the zone goes only when there is one, so a plain call stays a plain call
+                forecast = self.weather.fetch_at(city, *coordinates, **({"tz": tz} if tz else {}))
         except ProviderUnavailable:
             stale = self._stale(key, city, coordinates)
             if stale is None:
@@ -238,6 +262,7 @@ class RequestRouter:
             "sunset": forecast.sunset,
             "hourly": forecast.hourly,
             "daily": forecast.daily,
+            "provider": forecast.provider,
             "gear": gear or [],
         }
 

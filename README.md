@@ -60,6 +60,16 @@ prolonging it, and, if it has an earlier forecast for the place (up to six hours
 banner saying so instead of an error. An unknown city gets no such stand-in. A paid key can be set with
 `OPEN_METEO_API_KEY` to lift the limit altogether.
 
+**A second provider.** Better than a stale forecast is a fresh one, so when Open-Meteo cannot answer the same
+place is asked of **MET Norway** (`src/servers/app_server/met_norway.py`), which needs no key and is a different
+service with its own limits; `weather_failover.py` is the 40 lines that decide. It is not the same data in the same
+shape, and the code does not pretend it is: its times are UTC, so they are converted to the place's own zone (from
+the geocoder, or the browser for a shared position, or failing both an approximation from longitude rather than UTC
+shown as local); it gives rain as an amount in millimetres, so the page draws an amount and never invents a
+percentage; its UV is a clear sky value, so it is reduced for cloud; it has no sunrise, so that tile is left out.
+Every forecast says which provider produced it, as both licences ask. Searching for a place and finding a typed
+name stay with Open-Meteo's geocoder, which has a quota of its own; a throttled forecast API does not block it.
+
 **Installable and forgiving offline.** It is a progressive web app: a manifest, icons
 (rendered by `tools/make_icons.py`) and a service worker that keeps the page itself
 available without a connection. The service worker never touches `/api`; a forecast is

@@ -168,7 +168,21 @@ class TestPlaceSearch(unittest.TestCase):
 
         self.assertEqual([p["name"] for p in places], ["Ariel", "Lake Ariel"])
         self.assertEqual(places[0], {"name": "Ariel", "admin1": "Judea and Samaria Area",
-                                     "country": "Israel", "latitude": 32.1065, "longitude": 35.18449})
+                                     "country": "Israel", "timezone": "",
+                                     "latitude": 32.1065, "longitude": 35.18449})
+
+    def test_the_time_zone_of_a_match_is_passed_on(self, get):
+        """A fallback provider reports UTC and needs it to speak in the place's own hours."""
+        get.return_value = response({"results": [
+            {"name": "Ariel", "latitude": 32.1, "longitude": 35.2, "timezone": "Asia/Jerusalem"}]})
+
+        self.assertEqual(WeatherService().search("Ariel")[0]["timezone"], "Asia/Jerusalem")
+
+    def test_a_typed_name_keeps_the_time_zone_too(self, get):
+        get.return_value = response({"results": [
+            {"name": "Ariel", "latitude": 32.1, "longitude": 35.2, "timezone": "Asia/Jerusalem"}]})
+
+        self.assertEqual(WeatherService().locate("Ariel").tz, "Asia/Jerusalem")
 
     def test_it_asks_for_five(self, get):
         get.return_value = response(self.RESULTS)

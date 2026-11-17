@@ -72,10 +72,11 @@ HEBREW_CITY_NAMES = {
 
 @dataclass(frozen=True)
 class Place:
-    """A city resolved to coordinates."""
+    """A city resolved to coordinates, and the time zone it keeps, when that is known."""
     name: str
     latitude: float
     longitude: float
+    tz: str | None = None
 
 
 # Bumped whenever to_dict gains a field, so an entry written by an older version
@@ -109,6 +110,7 @@ class Forecast:
     sunset: str | None = None
     hourly: list = field(default_factory=list)     # [{"t", "temp", "rain", "code"}]
     daily: list = field(default_factory=list)      # [{"date", "code", "min", "max", ...}]
+    provider: str = "Open-Meteo"                   # who the weather came from, to credit them
 
     def to_csv(self) -> bytes:
         """
@@ -151,6 +153,7 @@ class Forecast:
             "sunset": self.sunset,
             "hourly": self.hourly,
             "daily": self.daily,
+            "provider": self.provider,
         }
 
     @classmethod
@@ -174,6 +177,7 @@ class Forecast:
             sunset=data.get("sunset"),
             hourly=list(data.get("hourly") or []),
             daily=list(data.get("daily") or []),
+            provider=data.get("provider") or "Open-Meteo",
         )
 
 
@@ -185,7 +189,9 @@ class WeatherService(ExternalService):
         # shares one address among many apps; a key lifts that for a paying user.
         self.api_key = api_key
         self.clock = clock
-        self._blocked_until = 0.0
+        # per endpoint: the forecast and the geocoder have separate quotas, and
+        # being throttled on one says nothing about the other
+        self._blocked_until: dict[str, float] = {}
 
     def fetch(self, city_name: str) -> Forecast:
         """Resolve a city and return its forecast.  Raises :class:`ServiceError`."""
@@ -210,7 +216,7 @@ class WeatherService(ExternalService):
         first = results[0]
         try:
             return Place(display_name or first.get("name", city_name),
-                         first["latitude"], first["longitude"])
+                         first["latitude"], first["longitude"], first.get("timezone"))
         except (KeyError, TypeError) as e:
             raise ServiceError("The geocoding service returned "
                                "an unexpected answer.") from e
@@ -243,14 +249,23 @@ class WeatherService(ExternalService):
                 results = [{**r, "name": query} for r in self._search(english, "he", count=1)[:1]]
 
         return [{"name": r.get("name") or query, "admin1": r.get("admin1") or "",
-                 "country": r.get("country") or "",
+                 "country": r.get("country") or "", "timezone": r.get("timezone") or "",
                  "latitude": r["latitude"], "longitude": r["longitude"]}
                 for r in results if "latitude" in r and "longitude" in r][:MAX_SUGGESTIONS]
 
     # ------------------------------------------------------------ forecasts
-    def fetch_at(self, name: str, latitude: float, longitude: float) -> Forecast:
+    def locate(self, city_name: str) -> Place:
+        """Resolve a typed name to a place. Raises :class:`ServiceError` if there is none."""
+        return self._geocode(city_name)
+
+    def forecast_for(self, place: Place) -> Forecast:
+        """The forecast for a place that is already resolved."""
+        return self._forecast(place)
+
+    def fetch_at(self, name: str, latitude: float, longitude: float,
+                 tz: str | None = None) -> Forecast:
         """The forecast for coordinates the user already chose or shared."""
-        return self._forecast(Place(name, latitude, longitude))
+        return self._forecast(Place(name, latitude, longitude, tz))
 
     def _forecast(self, place: Place) -> Forecast:
         payload = self._get(FORECAST_URL, {
@@ -337,10 +352,11 @@ class WeatherService(ExternalService):
         """One GET returning JSON, with every failure turned into ServiceError."""
         # After a 429 every further request only prolongs it, and the same
         # shared address is asking on behalf of everyone: stand down for a while.
-        wait = self._blocked_until - self.clock()
+        wait = self._blocked_until.get(url, 0.0) - self.clock()
         if wait > 0:
             raise RateLimited(RATE_LIMITED_MESSAGE)
 
+        blocked_url = url                 # the wait is remembered against the endpoint asked for
         if self.api_key:
             url = url.replace("//api.", "//customer-api.").replace("//geocoding-api.", "//customer-geocoding-api.")
             params = {**params, "apikey": self.api_key}
@@ -357,7 +373,7 @@ class WeatherService(ExternalService):
             reason = self._reason(response)
             log.error(f"Weather service answered HTTP {response.status_code}: {reason}")
             if response.status_code == 429:
-                self._blocked_until = self.clock() + self._retry_after(response)
+                self._blocked_until[blocked_url] = self.clock() + self._retry_after(response)
                 raise RateLimited(RATE_LIMITED_MESSAGE)
             raise ProviderUnavailable("The weather service is unavailable right now, "
                                       "please try again shortly.")

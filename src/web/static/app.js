@@ -49,7 +49,7 @@ const STRINGS = {
     how_app: "The server fetches live weather from Open-Meteo, and writes advice for each person, with Gemini when a key is set and with local rules otherwise.",
     status_title: "Network status", status_joined: "Joined", status_ip: "Address from DHCP",
     status_server: "App server from DNS", status_domain: "Domain", yes: "Yes", no: "No",
-    footer: "A computer networks graduation project.", api: "API", weather_credit: "Weather data: Open-Meteo",
+    footer: "A computer networks graduation project.", api: "API", weather_credit: "Weather data: Open-Meteo and MET Norway",
     tab_lab: "Protocol lab",
     lab_title: "Break the network, watch the protocol",
     lab_lede: "Send the same file through a simulated network, with the loss, delay and receive buffer you choose. The RUDP sender is this project's real code; the TCP side is a Reno model on the same link.",
@@ -104,9 +104,12 @@ const STRINGS = {
     gear_windbreaker: "Windbreaker", gear_hat: "Hat", gear_sunscreen: "Sunscreen", gear_sunglasses: "Sunglasses",
     gear_water: "Water", gear_spare_clothes: "Spare clothes",
     hourly_title: "Hour by hour", hourly_now: "now",
-    legend_temp: "Temperature", legend_rain: "Chance of rain",
-    hourly_aria: (lo, hi, rain) => `Temperature over the next 24 hours, from ${lo} to ${hi}. Highest chance of rain ${rain}%. Use the arrow keys to move along it.`,
-    hourly_readout: (hour, temp, rain) => `${hour}  ·  ${temp}  ·  rain ${rain}%`,
+    legend_temp: "Temperature", legend_rain: "Chance of rain", legend_amount: "Rain, mm",
+    rain_peak_chance: (v) => `Highest chance of rain ${v}%`,
+    rain_peak_amount: (v) => `Most rain in an hour ${v} mm`,
+    hourly_aria: (lo, hi, rain) => `Temperature over the next 24 hours, from ${lo} to ${hi}. ${rain}. Use the arrow keys to move along it.`,
+    hourly_readout: (hour, temp, rain) => `${hour}  ·  ${temp}  ·  rain ${rain}`,
+    data_from: "Weather data", data_fallback: "backup provider",
     week_title: "The week", today: "Today",
     stale_saved: (when) => `Saved forecast from ${when}. Press the button for a fresh one.`,
     stale_offline: (when) => `You are offline. Showing the forecast saved ${when}.`,
@@ -155,7 +158,7 @@ const STRINGS = {
     how_app: "השרת מביא מזג אוויר חי מ-Open-Meteo, וכותב המלצה לכל אחד, עם Gemini כשיש מפתח ועם כללים מקומיים בלעדיו.",
     status_title: "מצב הרשת", status_joined: "מחובר", status_ip: "כתובת מ-DHCP",
     status_server: "שרת האפליקציה מ-DNS", status_domain: "דומיין", yes: "כן", no: "לא",
-    footer: "פרויקט גמר ברשתות תקשורת.", api: "API", weather_credit: "נתוני מזג אוויר: Open-Meteo",
+    footer: "פרויקט גמר ברשתות תקשורת.", api: "API", weather_credit: "נתוני מזג אוויר: Open-Meteo ו-MET Norway",
     tab_lab: "מעבדת פרוטוקולים",
     lab_title: "מקלקלים את הרשת, ורואים מה הפרוטוקול עושה",
     lab_lede: "שולחים את אותו קובץ ברשת מדומה, עם אובדן חבילות, השהיה וגודל באפר לפי בחירתכם. השולח של RUDP הוא הקוד האמיתי של הפרויקט; צד ה-TCP הוא מודל של Reno על אותו קו.",
@@ -210,9 +213,12 @@ const STRINGS = {
     gear_windbreaker: "מעיל רוח", gear_hat: "כובע", gear_sunscreen: "קרם הגנה", gear_sunglasses: "משקפי שמש",
     gear_water: "מים", gear_spare_clothes: "בגדים להחלפה",
     hourly_title: "שעה אחר שעה", hourly_now: "עכשיו",
-    legend_temp: "טמפרטורה", legend_rain: "סיכוי לגשם",
-    hourly_aria: (lo, hi, rain) => `הטמפרטורה ב-24 השעות הקרובות, מ-${lo} עד ${hi}. הסיכוי הגבוה ביותר לגשם ${rain}%. אפשר לנוע לאורכה עם חיצי המקלדת.`,
-    hourly_readout: (hour, temp, rain) => `${hour}  ·  ${temp}  ·  גשם ${rain}%`,
+    legend_temp: "טמפרטורה", legend_rain: "סיכוי לגשם", legend_amount: "גשם, מ״מ",
+    rain_peak_chance: (v) => `הסיכוי הגבוה ביותר לגשם ${v}%`,
+    rain_peak_amount: (v) => `הכי הרבה גשם בשעה ${v} מ״מ`,
+    hourly_aria: (lo, hi, rain) => `הטמפרטורה ב-24 השעות הקרובות, מ-${lo} עד ${hi}. ${rain}. אפשר לנוע לאורכה עם חיצי המקלדת.`,
+    hourly_readout: (hour, temp, rain) => `${hour}  ·  ${temp}  ·  גשם ${rain}`,
+    data_from: "נתוני מזג אוויר", data_fallback: "ספק גיבוי",
     week_title: "השבוע", today: "היום",
     stale_saved: (when) => `תחזית שמורה (${when}). לחצו על הכפתור לתחזית עדכנית.`,
     stale_offline: (when) => `אין חיבור לאינטרנט. מוצגת התחזית ששמורה אצלכם (${when}).`,
@@ -448,6 +454,7 @@ function forecastRequest(city, people) {
     request.lat = place.lat;
     request.lon = place.lon;
     request.city = place.private ? "" : place.name;
+    if (place.tz) request.tz = place.tz;        // lets a fallback provider speak in the place's own hours
   }
   return request;
 }
@@ -622,8 +629,24 @@ function renderForecast(card, transfer) {
   renderHourly(card);
   renderWeek(card);
   renderStale();
+  renderCredit(card);
 
   renderTransfer(transfer);
+}
+
+const PROVIDER_LINKS = { "Open-Meteo": "https://open-meteo.com/", "MET Norway": "https://www.met.no/en" };
+
+// Both providers ask to be credited, and the page says which one produced this forecast.
+function renderCredit(card) {
+  const box = $("#fc-credit");
+  const provider = card.provider || "Open-Meteo";
+  const link = document.createElement("a");
+  link.href = PROVIDER_LINKS[provider] || "#";
+  link.rel = "noopener";
+  link.target = "_blank";
+  link.textContent = provider;
+  box.replaceChildren(document.createTextNode(`${t("data_from")}: `), link);
+  if (provider !== "Open-Meteo") box.append(document.createTextNode(` (${t("data_fallback")})`));
 }
 
 function detail(term, value, extra, valueClass) {
@@ -717,11 +740,17 @@ function renderHourly(card, active = null) {
     if (i % 3 === 0) parts.push(svgEl("text", { class: "tick-label", x: x(i), y: g.h - 10, "text-anchor": "middle" }, hourLabel(h.t)));
   });
 
+  // The fallback provider gives millimetres, not a chance. They are drawn as an
+  // amount and labelled as one: turning them into a percentage would be inventing it.
+  const byAmount = hours.every((h) => h.rain == null) && hours.some((h) => (h.mm || 0) > 0);
+  const maxMm = Math.max(2, ...hours.map((h) => h.mm || 0));
+  const share = (h) => (byAmount ? Math.min(1, (h.mm || 0) / maxMm) : Math.max(0, Math.min(100, h.rain || 0)) / 100);
+  const rainText = (h) => (byAmount ? `${round1(h.mm || 0)} mm` : `${h.rain || 0}%`);
+
   const barW = Math.max(3, plotW / hours.length - 3);
   hours.forEach((h, i) => {
-    const chance = Math.max(0, Math.min(100, h.rain || 0));
-    if (chance === 0) return;
-    const height = Math.max(2, (chance / 100) * rainBand);
+    if (share(h) === 0) return;
+    const height = Math.max(2, share(h) * rainBand);
     parts.push(svgEl("rect", { class: "h-rain", x: x(i) - barW / 2, y: g.top + plotH - height, width: barW, height, rx: 2 }));
   });
 
@@ -736,16 +765,21 @@ function renderHourly(card, active = null) {
   }
   svg.replaceChildren(...parts);
 
-  const rains = hours.map((h) => h.rain || 0);
+  const peak = byAmount
+    ? t("rain_peak_amount", round1(Math.max(...hours.map((h) => h.mm || 0))))
+    : t("rain_peak_chance", Math.max(...hours.map((h) => h.rain || 0)));
   svg.setAttribute("aria-label", t("hourly_aria", degrees(Math.min(...hours.map((h) => h.temp)), 0),
-    degrees(Math.max(...hours.map((h) => h.temp)), 0), Math.max(...rains)));
+    degrees(Math.max(...hours.map((h) => h.temp)), 0), peak));
   $("#hourly-readout").textContent = active === null ? "" :
-    t("hourly_readout", hourLabel(hours[active].t), degrees(hours[active].temp, 0), hours[active].rain || 0);
+    t("hourly_readout", hourLabel(hours[active].t), degrees(hours[active].temp, 0), rainText(hours[active]));
   hourlyActive = active;
+  if (hourlyByAmount !== byAmount) { hourlyByAmount = byAmount; hourlyLegend(); }
 }
 
+let hourlyByAmount = false;
+
 function hourlyLegend() {
-  const items = [["var(--warm)", "legend_temp"], ["var(--cool)", "legend_rain"]];
+  const items = [["var(--warm)", "legend_temp"], ["var(--cool)", hourlyByAmount ? "legend_amount" : "legend_rain"]];
   $("#hourly-legend").replaceChildren(...items.map(([colour, key]) => {
     const span = document.createElement("span");
     const swatch = document.createElement("i");
@@ -798,7 +832,8 @@ function renderWeek(card) {
       return el;
     };
     const name = index === 0 ? t("today") : weekday.format(new Date(`${day.date}T12:00:00`));
-    const rain = typeof day.rain === "number" && day.rain >= 20 ? `${day.rain}%` : "";
+    const rain = typeof day.rain === "number" && day.rain >= 20 ? `${day.rain}%`
+      : typeof day.mm === "number" && day.mm >= 1 ? `${Math.round(day.mm)} mm` : "";
     const icon = cell("day__icon", skyIcon(day.code, true));
     icon.setAttribute("aria-hidden", "true");
 
@@ -813,7 +848,7 @@ function renderWeek(card) {
     li.append(cell("day__name", name), icon, cell("day__rain", rain),
       cell("day__min", degrees(day.min, 0)), bar, cell("day__max", degrees(day.max, 0)));
     li.setAttribute("aria-label", `${name}: ${degrees(day.min, 0)} – ${degrees(day.max, 0)}`
-      + (day.rain >= 20 ? `, ${t("rain")} ${day.rain}%` : ""));
+      + (rain ? `, ${t("rain")} ${rain}` : ""));
     return li;
   }));
 }
@@ -1019,7 +1054,8 @@ function onCityKey(event) {
 function choosePlace(place) {
   $("#city").value = place.name;
   const label = [place.name, place.admin1, place.country].filter(Boolean).join(", ");
-  state.chosenPlace = { name: place.name, shown: place.name, lat: place.latitude, lon: place.longitude, private: false };
+  state.chosenPlace = { name: place.name, shown: place.name, lat: place.latitude, lon: place.longitude,
+                        tz: place.timezone || "", private: false };
   $("#place-note").textContent = t("place_note", label);
   $("#place-note").hidden = false;
   closeSuggestions();
@@ -1041,8 +1077,11 @@ function useMyLocation() {
     const shown = t("my_location");
     // rounded here as well as on the server: a position need not leave the device more precisely than weather can use
     const round2 = (degrees) => Math.round(degrees * 100) / 100;
+    // A shared position is the visitor's own, so the zone is the one their browser keeps.
+    let tz = "";
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { /* no zone: the server will approximate */ }
     state.chosenPlace = { name: "", shown, lat: round2(position.coords.latitude),
-                          lon: round2(position.coords.longitude), private: true };
+                          lon: round2(position.coords.longitude), tz, private: true };
     $("#city").value = shown;
     $("#place-note").textContent = t("place_private");
     $("#place-note").hidden = false;

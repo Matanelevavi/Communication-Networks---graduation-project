@@ -170,6 +170,16 @@ class TestArchive(AgentTestCase):
         self.assertIn("2026-09-01  00:00", table)
         self.assertNotIn("latitude", table)      # the metadata rows are dropped
 
+    def test_an_hour_without_a_chance_of_rain_shows_a_dash_not_a_bare_percent_sign(self):
+        self.write("amounts.csv", b"time,temperature_2m,precipitation_probability\n"
+                                  b"2026-11-17T10:00,19.5,\n2026-11-17T11:00,20.1,40\n")
+
+        table = self.agent.archived_file("amounts.csv")
+
+        self.assertIn("19.5" + chr(176) + "C | -", table)
+        self.assertIn("20.1" + chr(176) + "C | 40%", table)
+        self.assertNotIn("| %", table)
+
     def test_the_table_is_not_limited_to_the_2020s(self):
         """The row filter used to test for a literal '202' prefix."""
         self.write("future.csv", b"time,temperature_2m,precipitation_probability\n"

@@ -79,6 +79,24 @@ class TestHowTheClientFails(unittest.TestCase):
 
         self.assertEqual(get.call_count, 1)
 
+    def test_being_throttled_on_the_forecast_does_not_block_the_geocoder(self, get):
+        """
+        They have separate quotas. A back-off on both once made a typed city fail
+        at 'find the place', before any fallback could be asked for the forecast.
+        """
+        get.return_value = reply(429)
+        with self.assertRaises(RateLimited):
+            self.service.fetch_at("Ariel", 1, 2)
+
+        get.return_value = reply(200, {"results": [{"name": "Ariel", "latitude": 32.1,
+                                                    "longitude": 35.2, "timezone": "Asia/Jerusalem"}]})
+
+        self.assertEqual(self.service.locate("Ariel").name, "Ariel")      # not blocked
+        self.assertEqual(get.call_count, 2)
+        with self.assertRaises(RateLimited):                              # while the forecast still is
+            self.service.fetch_at("Ariel", 1, 2)
+        self.assertEqual(get.call_count, 2)
+
     def test_it_tries_again_once_the_wait_is_over(self, get):
         get.side_effect = [reply(429), reply(200, OK_BODY)]
         with self.assertRaises(RateLimited):

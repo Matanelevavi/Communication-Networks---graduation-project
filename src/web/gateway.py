@@ -113,7 +113,7 @@ class NetworkGateway:
 
     def forecast(self, city: str, profiles: list[dict], protocol: str,
                  lat: float | None = None, lon: float | None = None,
-                 lang: str | None = None) -> tuple[dict | None, Exchange]:
+                 lang: str | None = None, tz: str | None = None) -> tuple[dict | None, Exchange]:
         """
         The forecast card, or ``None`` when the server answered with an error.
 
@@ -125,6 +125,8 @@ class NetworkGateway:
             request.update(lat=lat, lon=lon)
         if lang:
             request["lang"] = lang
+        if tz:
+            request["tz"] = tz
 
         exchange = self.exchange(request, protocol)
         if exchange.is_error:

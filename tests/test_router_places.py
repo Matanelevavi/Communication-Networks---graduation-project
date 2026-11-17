@@ -118,6 +118,23 @@ class TestSharedPositions(PlacesTestCase):
         self.assertTrue(self.ask().startswith("Error:"))
 
 
+class TestTimeZone(PlacesTestCase):
+    """The zone only decides which hours a fallback provider's UTC times are written as."""
+
+    def test_a_real_zone_is_passed_on_only_when_there_is_one(self):
+        self.card(city="Ariel", lat=32.1, lon=35.2, tz="Asia/Jerusalem")
+        self.assertEqual(self.weather.fetch_at.call_args[1], {"tz": "Asia/Jerusalem"})
+
+        self.card(city="Ariel", lat=32.1, lon=35.2)
+        self.assertEqual(self.weather.fetch_at.call_args[1], {})
+
+    def test_a_name_that_is_not_a_zone_is_ignored_not_trusted(self):
+        for bad in ("Mars/Olympus", "../../etc/passwd", "", 5, None, [], {"a": 1}, "x" * 500,
+                    "asia/jerusalem\x00"):
+            self.card(city="Ariel", lat=32.1, lon=35.2, tz=bad)
+            self.assertEqual(self.weather.fetch_at.call_args[1], {}, bad)
+
+
 class TestBadCoordinates(PlacesTestCase):
 
     def test_nothing_reaches_the_weather_service_when_the_position_is_wrong(self):

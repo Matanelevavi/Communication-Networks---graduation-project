@@ -56,6 +56,8 @@ behind it, because they are also run directly in the desktop client.
 | 21 | Hostile coordinates | `lat` and `lon` must be finite numbers in range and arrive together, checked at the API and again in the router; nothing reaches the weather service otherwise | `ForecastRequest`, `RequestRouter._coordinates`, fuzzed |
 | 22 | The upstream provider throttles the shared address (HTTP 429) and takes the site down with it | Calls are minimised, a 429 starts a back-off during which the provider is not called, the last good forecast (at most six hours old, never for an unknown city) is served with a visible banner, and an optional paid key is supported | `WeatherService._get`, `RequestRouter._weather_for`, tested |
 | 23 | A request whose `action` is a list or object crashing the router | Only strings are looked up as actions; found by fuzzing and pinned by a test | `RequestRouter.handle` |
+| 24 | The fallback provider being fed hostile input, or the time zone being used to reach somewhere it should not | The zone must be the name of a zone that exists on the machine, anything else is ignored; coordinates are rounded to four decimals as the provider requires; its answer is parsed defensively and anything unexpected becomes a clean `ProviderUnavailable`, tested against a trimmed real response | `RequestRouter._timezone`, `MetNorway.parse` |
+| 25 | The site depending on one third party's free tier | Two providers behind one interface, a back-off per endpoint, the last good forecast served marked as stale, and a paid key supported for the first | `weather_failover.py` |
 
 ### What fuzzing found
 

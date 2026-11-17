@@ -75,6 +75,7 @@ class ForecastRequest(BaseModel):
     lat: float | None = Field(default=None, ge=-90, le=90)
     lon: float | None = Field(default=None, ge=-180, le=180)
     lang: Literal["he", "en"] | None = None
+    tz: str | None = Field(default=None, max_length=64)
     profiles: list[Person] = Field(default_factory=list, max_length=MAX_PROFILES)
     protocol: Protocol = "RUDP"
 
@@ -185,7 +186,7 @@ def create_app(gateway: NetworkGateway | None = None,
         # Optional pieces go as keywords only when present, so a plain city
         # request is exactly the call it always was.
         extra = {key: value for key, value in
-                 (("lat", body.lat), ("lon", body.lon), ("lang", body.lang))
+                 (("lat", body.lat), ("lon", body.lon), ("lang", body.lang), ("tz", body.tz))
                  if value is not None}
         try:
             card, exchange = gateway.forecast(body.city.strip(), profiles, body.protocol, **extra)
