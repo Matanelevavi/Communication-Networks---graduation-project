@@ -1,0 +1,382 @@
+# How WeatherWear works
+
+The detailed tour: every component, the protocols on the wire, and the decisions behind
+them. For the short version, see the [README](../README.md).
+
+## The website
+
+```bash
+pip install -r requirements.txt
+python -m src.web.serve          # then open http://127.0.0.1:8000
+```
+
+The website is in Hebrew and English (right to left included), works on a
+phone, has a dark mode, and keeps the family you describe on your own device.
+Every answer comes with an **Under the hood** panel: which transport carried
+it, how many datagrams arrived, how many were duplicates or failed their CRC.
+
+### The forecast
+
+Beyond the temperature, the page shows what a person deciding what to wear needs:
+
+* **hour by hour** for the next 24 hours, as a line for the temperature with the
+  chance of rain as bars under it; hover, touch or use the arrow keys to read one hour;
+* **the week**, with a bar for each day's range;
+* **wind, UV index** (coloured by level), **humidity** and **sunrise and sunset**, and
+  how it *feels* when that differs from the air temperature;
+* **what to bring** as a short list of icons (umbrella, sunscreen, windbreaker, spare
+  clothes for a small child...), produced by the same thresholds as the written advice,
+  so the two cannot disagree;
+* **°C / °F**, a weather icon from the sky condition (day or night), and the advice in
+  the language the page is shown in, even when the city was typed in the other one.
+
+**Choosing the right place.** "Ariel" is five towns in four countries, so typing shows
+suggestions with their region and country, and picking one sends its coordinates. The
+suggestions are a keyboard-operable ARIA combobox. A button finds your location.
+
+**A shared location is treated as private.** It is rounded to about a kilometre in the
+browser and again on the server, cached under a hashed name that the public archive
+neither lists nor serves, never offered back as a shortcut, and no report is archived
+for it.
+
+**When the weather provider is busy.** The free Open-Meteo API limits requests per address, and a free
+host shares one address among many apps, so the deployed site was at one point answered with HTTP 429
+at low traffic. The server now keeps its calls to a minimum (a chosen place costs one request; the
+archive's CSV is written from the hours already fetched), stands down for a while after a 429 instead of
+prolonging it, and, if it has an earlier forecast for the place (up to six hours old), serves that with a
+banner saying so instead of an error. An unknown city gets no such stand-in. A paid key can be set with
+`OPEN_METEO_API_KEY` to lift the limit altogether.
+
+**A second provider.** Better than a stale forecast is a fresh one, so when Open-Meteo cannot answer the same
+place is asked of **MET Norway** (`src/servers/app_server/met_norway.py`), which needs no key and is a different
+service with its own limits; `weather_failover.py` is the 40 lines that decide. It is not the same data in the same
+shape, and the code does not pretend it is: its times are UTC, so they are converted to the place's own zone (from
+the geocoder, or the browser for a shared position, or failing both an approximation from longitude rather than UTC
+shown as local); it gives rain as an amount in millimetres, so the page draws an amount and never invents a
+percentage; its UV is a clear sky value, so it is reduced for cloud; it has no sunrise, so that tile is left out.
+Every forecast says which provider produced it, as both licences ask. Searching for a place and finding a typed
+name stay with Open-Meteo's geocoder, which has a quota of its own; a throttled forecast API does not block it.
+
+**Installable and forgiving offline.** It is a progressive web app: a manifest, icons
+(rendered by `tools/make_icons.py`) and a service worker that keeps the page itself
+available without a connection. The service worker never touches `/api`; a forecast is
+dynamic and a family's names ride in the request. Instead the page keeps the last
+forecast on the device and, when there is no connection, shows it with a banner that
+says so. It also opens on the last forecast instead of an empty page.
+
+### The protocol lab
+
+The **Protocol lab** tab sends one file through a simulated network, with the
+packet loss, one way delay, file size and receive buffer you choose, and draws
+the congestion window as it happens: slow start, a timeout collapsing the window
+to one, a fast retransmit halving it, the receive buffer capping it. Every
+experiment has a link (`#lab?loss=15&delay=80&size=64&buffer=8&seed=2`) you can
+share.
+
+It is not an animation. The numbers come from `/api/lab`, which runs
+
+* **the project's real `RudpSender` and `RudpReceiver`**, unchanged, on a
+  simulated link with a virtual clock (`src/lab/rudp_run.py`): the socket is the
+  only thing replaced, and the receiver's decisions live in `RudpReceiver.process`,
+  the same method its `receive` loop calls for every datagram;
+* **a TCP Reno model** on the same link (`src/lab/tcp_model.py`): cumulative
+  acknowledgements, the same slow start and congestion avoidance, fast retransmit
+  after three duplicate ACKs and a timeout. It is a model, not the operating
+  system's TCP, which cannot be placed on a lossy virtual link, and the page says so.
+
+The link decides loss by hashing `(seed, direction, sequence number, attempt)`, so
+both protocols lose the very same first transmissions and the same inputs always
+give the same answer. Each run ends by checking that the received bytes equal the
+bytes sent. A minute of simulated network takes milliseconds to compute, and the
+inputs are bounded (256 KB, 50 % loss, 400 ms), so the worst case stays cheap.
+
+It also shows things that are not flattering. At 15 % loss RUDP gives up after four
+timeouts in a row while Reno keeps going: that is how `MAX_RETRIES` is set, and the
+lab makes the cost of that choice visible.
+
+A browser cannot speak RUDP, and the RUDP port must never face the internet: a
+small request that triggers a large answer is exactly what a reflection attack
+needs. So the website is **one more host on the simulated network**. It joins
+through DHCP, resolves the application server through DNS, and carries each
+visitor's request over real TCP or real RUDP on loopback. Only HTTP is exposed.
+
+```
+browser --HTTPS--> FastAPI gateway --DHCP/DNS/TCP/RUDP over loopback--> servers
+                   (rate limited,                                       (unchanged)
+                    validated, CSP)
+```
+
+It deploys as one Docker container. On Render: **New > Blueprint**, pick this
+repository, and `render.yaml` does the rest. `GEMINI_API_KEY` is optional and
+is set in the dashboard, never in the repository.
+
+## Running the desktop client
+
+```bash
+pip install -r requirements.txt
+python run.py
+```
+
+`run.py` starts every server, waits until each one has actually claimed its
+port — a readiness check, not a fixed sleep — and only then starts the client.
+Press `Ctrl+C` in the launcher window to stop everything.
+
+To start a second client for a concurrency demo:
+
+```bash
+python -m src.client.client
+```
+
+## Architecture
+
+Five independent operating system processes, all over loopback:
+
+| Component | Port | Transport | Notes |
+|---|---|---|---|
+| DHCP server (primary) | 8067 | UDP | pool `192.168.1.100-150` |
+| DHCP server (backup) | 8069 | UDP | pool `192.168.2.100-150`, answers 2s late |
+| DNS server | 8053 | UDP | one zone: `weatherwear.local -> 127.0.0.1` |
+| App server | 8080 | TCP **and** UDP | same port number, separate namespaces |
+| Client | 8068 | UDP control socket | falls back to an ephemeral port if 8068 is busy |
+
+Ports above 1024 are used deliberately: 53/67/68 need administrator rights and
+collide with services the operating system already runs.
+
+```
+                        +---------------------------+
+                        |          Client           |
+                        |  UDP:8068 control socket  |
+                        |  DhcpClient + DnsResolver |
+                        |  TcpTransport|RudpTransport
+                        +-------------+-------------+
+                                      |
+        +---------------+-------------+-------------+----------------+
+        v               v                           v                v
++---------------+ +----------------+ +----------------+ +--------------------+
+| DHCP primary  | | DHCP backup    | |  DNS server    | |    App server      |
+| UDP:8067      | | UDP:8069       | |  UDP:8053      | | TCP:8080 UDP:8080  |
+| AddressPool   | | AddressPool    | |  one zone      | | TcpListener        |
+|               | | + 2s delay     | |  + TTL         | | RudpListener       |
++---------------+ +----------------+ +----------------+ +---------+----------+
+                                                                  |
+                                                          RequestRouter
+                                          +-----------------------+------------+
+                                          v                       v            v
+                                   +-------------+        +-------------+ +---------+
+                                   |WeatherService        |  FileAgent  | |RudpSender
+                                   |AiAdvisor    |        | cache + FTP | |  window |
+                                   | Open-Meteo  |        |  FileStore  | | + CRC32 |
+                                   | + Gemini    |        |             | |         |
+                                   +-------------+        +-------------+ +---------+
+```
+
+## Layout
+
+Each module has one job.
+
+```
+run.py                                launcher with a port readiness check
+src/config.py                         every port, timeout and protocol constant
+
+src/rudp/                             the protocol, shared by both endpoints
+  packet.py                           wire format and checksum, one definition
+  congestion.py                       the congestion window, as pure arithmetic
+  window.py                           state of one transfer in flight
+  sender.py                           sliding window transmitter
+  receive_buffer.py                   the receiver's buffer and its rwnd
+  receiver.py                         reassembly and acknowledgement
+
+src/client/
+  client.py                           NetworkClient, composes the pieces below
+  dhcp_client.py                      DORA with per step retries
+  dns_resolver.py                     queries and a TTL aware cache
+  transport.py                        Transport -> TcpTransport | RudpTransport
+  session.py                          the interactive loop
+  gui/theme.py                        palette and type scale, named once
+  gui/base.py                         the window every screen inherits
+  gui/parsing.py                      input and listings as data, no display needed
+  gui/request_window.py               the dashboard
+  gui/forecast_window.py              the answer, laid out as a card
+  gui/file_windows.py                 the archive listing and the file viewer
+  gui/busy_window.py                  shown while a request is on the wire
+
+src/servers/
+  address_pool.py                     reservations, leases and their expiry
+  dhcp_server.py                      the DORA state machine over UDP
+  dhcp_backup.py                      the same server, second pool, delayed
+  dns_server.py                       authoritative answers with a TTL
+  app_server/app.py                   runs both listeners over one router
+  app_server/tcp_listener.py          TCP, and the message framing TCP lacks
+  app_server/rudp_listener.py         RUDP handshakes and transfers
+  app_server/router.py                request -> answer, transport agnostic
+  app_server/weather_api.py           Open-Meteo client
+  app_server/advisor.py               prefers the AI, guarantees an answer
+  app_server/ai_advisor.py            Gemini client, optional
+  app_server/local_advisor.py         advice from the forecast, no key needed
+  app_server/external_service.py      shared validation and error type
+  app_server/agent.py                 FileAgent: the cache and the archive
+  app_server/forecast_cache.py        recent weather per city, never the advice
+  app_server/file_archive.py          list, read, render a CSV as a table
+  app_server/storage.py               guarded access to the data directory
+
+src/lab/                              the protocol lab: a simulated link, real RUDP on it, a Reno model
+
+src/web/                              the website, one more host on the network
+  gateway.py                          joins over DHCP/DNS, relays over TCP/RUDP
+  app.py                              FastAPI: validation, headers, the API
+  limits.py                           a per visitor rate limit
+  serve.py                            starts every server, then the website
+  static/                             the bilingual interface, no build step
+
+tests/                                unit tests, one file per module
+```
+
+Three design decisions are worth pointing at:
+
+* **`src/rudp/` sits beside the client and the servers, not inside either.**
+  Both ends of a transfer depend on the wire format, so it has exactly one
+  definition. Previously each side built and parsed the header by hand.
+* **`Transport` is an abstract base with two implementations.** Nothing above
+  it branches on TCP versus RUDP; the difference between the two *is* the
+  project, and it lives in one file.
+* **The router never learns how a request arrived.** Both listeners hand it a
+  dictionary and send back whatever it returns.
+
+## Configuration
+
+Everything tunable lives in [`src/config.py`](../src/config.py). The values that
+matter during a demo can also be set through the environment, so nothing has to
+be edited mid-presentation:
+
+| Variable | Effect |
+|---|---|
+| `GEMINI_API_KEY` | Optional. Upgrades the advice to an AI written paragraph |
+| `SIMULATE_LOSS=1` | Drop packets at random (`LOSS_RATE`, default 0.2) |
+| `SIMULATE_DELAY=1` | Delay one packet (`DELAY_SEQ`, `DELAY_SECONDS`) to force a retransmit |
+| `RUDP_RECV_BUFFER=2` | Shrink the receive buffer to watch flow control throttle the sender |
+
+```bash
+SIMULATE_LOSS=1 python run.py          # watch retransmission and the window collapse
+RUDP_RECV_BUFFER=2 python run.py       # watch the receiver throttle the sender
+```
+
+On Windows PowerShell: `$env:SIMULATE_LOSS=1; python run.py`
+
+### The Gemini key is optional
+
+Copy `.env.example` to `.env` and put a key in it if you want AI written
+advice. `.env` is git ignored, and a key should never be committed: Google
+scans public code for its own keys and revokes the ones it finds, so a
+hardcoded key stops working on its own.
+
+Without a key the app is not degraded into a placeholder. `LocalAdvisor`
+writes the recommendation from the same live numbers, and the interface says
+which advisor produced the text.
+
+## The RUDP protocol
+
+Data packet, and the acknowledgement that answers it:
+
+```
+SEQ:<n>|TOTAL:<t>|CHK:<crc32>|<up to 800 payload bytes>
+ACK:<n>|WIN:<rwnd>
+```
+
+The CRC32 covers `SEQ:<n>|TOTAL:<t>|` **and** the payload, so a bit flip in a
+header field is detected too, not only a bit flip in the data.
+
+| Mechanism | Behaviour |
+|---|---|
+| Reliability | per packet sequence numbers, CRC32, retransmission on timeout |
+| Congestion control | slow start (`cwnd += 1` per ACK) until `ssthresh`, then congestion avoidance (`cwnd += 1/cwnd`) |
+| Loss recovery | a timeout halves `ssthresh` and restarts at `cwnd = 1`; three duplicate ACKs trigger a Fast Retransmit and halve the window |
+| Flow control | the receiver advertises its free buffer space as `rwnd` in every ACK; the sender is limited by `min(cwnd, rwnd)` |
+| Connection setup | `SEQ:1` / `ACK:1`, retried up to `MAX_RETRIES` times |
+| Teardown | `FIN` / `FIN-ACK` |
+
+Congestion control and flow control answer two different questions, and the
+smaller answer wins: *what can the network carry* versus *what can the receiver
+hold*. The receiver hands in-order bytes on immediately and only buffers chunks
+that arrive early, so `rwnd` is the space left for those gaps. One packet is
+always allowed through, so a zero window is probed rather than deadlocked.
+
+The server answers from a fresh ephemeral socket rather than the well known
+port, so the data acknowledgements never race with new incoming requests.
+
+## DHCP
+
+DORA over unicast, with two mechanisms that keep the pool honest:
+
+* an offered address is **reserved**, not leased, and returns to the pool after
+  `OFFER_HOLD_TIME` if the REQUEST never arrives;
+* a granted address is leased for `LEASE_TIME` and returns to the pool when the
+  lease expires, even without a RELEASE.
+
+The REQUEST carries the port of the server whose offer was accepted and goes to
+both servers — the role the *server identifier* option plays in RFC 2131. The
+server that was not chosen frees its reservation immediately instead of holding
+an address nobody will claim.
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m unittest discover -s tests -t .
+```
+
+More than 400 tests covering the DHCP lease state machine, DNS answers, RUDP framing,
+congestion control and flow control, TCP message framing, storage, the advisor
+fallback, the external API clients, and the website's gateway, rate limit,
+input validation and security headers. They use mocked sockets, so no server has
+to be running and nothing touches the network.
+
+Ten of them check the interface: that every window fits on the screen it is
+opened on, and that its action button and the transport choice are reachable
+without scrolling. A fixed pixel height had put those off the bottom edge on a
+display with system font scaling, so the layout is now asserted rather than
+assumed. They skip where there is no display.
+
+## How a forecast is produced
+
+```
+FORECAST request
+      |
+      v
+  weather cache (30 min) ---- hit ----> the stored weather, marked cached
+      |                                         |
+     miss                                       |
+      v                                         |
+  Open-Meteo: geocode the city, then the next   |
+  24 hours from now, in the city's time zone    |
+      |                                         |
+  store the weather and the raw CSV             |
+      |                                         |
+      +-----------------------------------------+
+      v
+  ClothingAdvisor, for the family in *this* request
+      |-- a key is set?  -> Gemini writes the paragraph        (source: ai)
+      |-- no key, or the call fails -> LocalAdvisor writes it  (source: local)
+      v
+  answer with the card
+```
+
+Only the weather is cached and archived. The advice names the people it was
+written for, so it is written again for every request and never stored: the
+archive is readable by every client.
+
+City names may be typed in English or in Hebrew, and so may the family. Each
+line is `name, age, notes`, where only the name is required and the age is
+`adult`, `child` or `baby` (or `מבוגר`, `ילד`, `תינוק`).
+
+The answer is a JSON object rather than prose, so the client lays the numbers
+out itself instead of parsing sentences:
+
+```json
+{
+  "kind": "forecast", "city": "Ariel",
+  "min_temp": 19.9, "max_temp": 33.3, "current_temp": 22.6,
+  "rain": "No rain expected",
+  "advice": "Ariel is hot today, 19.9° to 33.3°, so go with ...",
+  "source": "local", "cached": false
+}
+```
