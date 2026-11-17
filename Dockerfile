@@ -12,6 +12,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Patch the operating system packages the base image shipped with. CI scans the
+# built image and fails on any HIGH or CRITICAL vulnerability that has a fix; for
+# an operating system package that fix is nearly always a newer version of it,
+# and it appears days after the base image was built (zlib1g, once).
+RUN apt-get update \
+    && apt-get -y --no-install-recommends upgrade \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
